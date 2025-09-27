@@ -1,0 +1,1 @@
+"""Core modules for WSR Generator"""
