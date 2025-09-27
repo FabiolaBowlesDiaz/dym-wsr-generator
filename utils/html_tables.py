@@ -65,8 +65,8 @@ class HTMLTableGenerator:
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
-                    <th>Precio 2024 (BOB/C9L)</th>
-                    <th>Precio 2025 (BOB/C9L)</th>
+                    <th>IngNeto/C9L 2024</th>
+                    <th>IngNeto/C9L 2025</th>
                     <th>%Inc/Dec Precio</th>
                     <th>Stock (C9L)</th>
                     <th>Cobertura (días)</th>
@@ -191,8 +191,8 @@ class HTMLTableGenerator:
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
-                    <th>Precio 2024</th>
-                    <th>Precio 2025</th>
+                    <th>IngNeto/C9L 2024</th>
+                    <th>IngNeto/C9L 2025</th>
                     <th>%Inc Precio</th>
                     <th>Stock C9L</th>
                     <th>Cobertura</th>

@@ -743,8 +743,8 @@ class HTMLGenerator:
                 <thead>
                     <tr>
                         <th>MES</th>
-                        <th>CLIENTES TOTALES</th>
-                        <th>CLIENTES CONTACTADOS</th>
+                        <th>BASE DE CLIENTES</th>
+                        <th>CLIENTES ATENDIDOS</th>
                         <th>CLIENTES CON VENTA</th>
                         <th style="background: #059669;">EFICIENCIA (%)</th>
                         <th style="background: #3b82f6;">HIT RATE (%)</th>
@@ -862,8 +862,8 @@ class HTMLGenerator:
                 <thead>
                     <tr>
                         <th>CIUDAD</th>
-                        <th>CLIENTES TOTALES</th>
-                        <th>CLIENTES CONTACTADOS</th>
+                        <th>BASE DE CLIENTES</th>
+                        <th>CLIENTES ATENDIDOS</th>
                         <th>CLIENTES CON VENTA</th>
                         <th style="background: #059669;">EFICIENCIA (%)</th>
                         <th>PERFORMANCE</th>
