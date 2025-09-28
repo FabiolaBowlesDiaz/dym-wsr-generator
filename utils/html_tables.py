@@ -451,7 +451,19 @@ class HTMLTableGenerator:
             ppto = marca_row.get('ppto_general_c9l', 0)
             sop = marca_row.get('sop_c9l', 0)
             avance = marca_row.get(avance_col, 0)
-            py = sop  # Para C9L usar SOP como proyección
+
+            # Nueva fórmula para PY2025 en C9L: (Avance 2025 C9L * PY2025 BOB) / Avance 2025 BOB
+            avance_bob_col = f'avance_{self.current_year}_bob'
+            py_bob_col = f'py_{self.current_year}_bob'
+            avance_c9l = marca_row.get(avance_col, 0)
+            avance_bob = marca_row.get(avance_bob_col, 0)
+            py_bob = marca_row.get(py_bob_col, 0)
+
+            # Calcular PY para C9L con manejo de división por cero
+            if avance_bob > 0:
+                py = (avance_c9l * py_bob) / avance_bob
+            else:
+                py = 0
 
             # KPIs para C9L
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
@@ -536,7 +548,20 @@ class HTMLTableGenerator:
         total_ppto = df_marca['ppto_general_c9l'].sum() if 'ppto_general_c9l' in df_marca.columns else 0
         total_sop = df_marca['sop_c9l'].sum() if 'sop_c9l' in df_marca.columns else 0
         total_avance = df_marca[avance_col].sum() if avance_col in df_marca.columns else 0
-        total_py = total_sop  # Para C9L usar SOP
+
+        # Calcular total PY usando la nueva fórmula
+        avance_bob_col = f'avance_{self.current_year}_bob'
+        py_bob_col = f'py_{self.current_year}_bob'
+        total_avance_c9l = df_marca[avance_col].sum() if avance_col in df_marca.columns else 0
+        total_avance_bob = df_marca[avance_bob_col].sum() if avance_bob_col in df_marca.columns else 0
+        total_py_bob = df_marca[py_bob_col].sum() if py_bob_col in df_marca.columns else 0
+
+        # Aplicar fórmula con manejo de división por cero
+        if total_avance_bob > 0:
+            total_py = (total_avance_c9l * total_py_bob) / total_avance_bob
+        else:
+            total_py = 0
+
         total_stock = df_marca['stock_c9l'].sum() if 'stock_c9l' in df_marca.columns else 0
 
         # KPIs totales
@@ -682,13 +707,25 @@ class HTMLTableGenerator:
         vendido_col = f'vendido_{self.previous_year}_c9l'
         avance_col = f'avance_{self.current_year}_c9l'
         py_col = f'py_{self.current_year}_c9l'
-        
+
         for idx, row in df.iterrows():
             vendido = row[vendido_col] if vendido_col in df.columns else 0
             ppto = row.get('ppto_general_c9l', 0)
             sop = row.get('sop_c9l', 0)
             avance = row[avance_col] if avance_col in df.columns else 0
-            py = row.get('sop_c9l', 0)  # Para C9L usar SOP como proyección
+
+            # Nueva fórmula para PY2025 en C9L: (Avance 2025 C9L * PY2025 BOB) / Avance 2025 BOB
+            avance_bob_col = f'avance_{self.current_year}_bob'
+            py_bob_col = f'py_{self.current_year}_bob'
+            avance_c9l = row[avance_col] if avance_col in df.columns else 0
+            avance_bob = row[avance_bob_col] if avance_bob_col in df.columns else 0
+            py_bob = row[py_bob_col] if py_bob_col in df.columns else 0
+
+            # Calcular PY para C9L con manejo de división por cero
+            if avance_bob > 0:
+                py = (avance_c9l * py_bob) / avance_bob
+            else:
+                py = 0
             
             # KPIs C9L
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
@@ -723,9 +760,22 @@ class HTMLTableGenerator:
         total_ppto = df['ppto_general_c9l'].sum() if 'ppto_general_c9l' in df.columns else 0
         total_sop = df['sop_c9l'].sum() if 'sop_c9l' in df.columns else 0
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
-        total_py = total_sop  # Para C9L usar SOP
+
+        # Calcular total PY usando la nueva fórmula
+        avance_bob_col = f'avance_{self.current_year}_bob'
+        py_bob_col = f'py_{self.current_year}_bob'
+        total_avance_c9l = df[avance_col].sum() if avance_col in df.columns else 0
+        total_avance_bob = df[avance_bob_col].sum() if avance_bob_col in df.columns else 0
+        total_py_bob = df[py_bob_col].sum() if py_bob_col in df.columns else 0
+
+        # Aplicar fórmula con manejo de división por cero
+        if total_avance_bob > 0:
+            total_py = (total_avance_c9l * total_py_bob) / total_avance_bob
+        else:
+            total_py = 0
+
         total_stock = df['stock_c9l'].sum() if 'stock_c9l' in df.columns else 0
-        
+
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
