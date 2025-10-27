@@ -145,52 +145,177 @@ class DatabaseManager:
         """
         return self.execute_query(query)
     
-    def get_proyecciones_marca(self, year: int, month: int) -> pd.DataFrame:
+    def get_proyecciones_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
         """
-        Obtener proyecciones por marca
-        IMPORTANTE: Incluye SOP de Oruro y Trinidad que no tienen gerente
+        Obtener proyecciones híbridas por marca
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+
+        Lógica por semana actual:
+        - Semana 1 (día 1-7): Proyección completa (S1+S2+S3+S4+S5)
+        - Semana 2 (día 8-14): Real_S1 + Proy_S2+S3+S4+S5
+        - Semana 3 (día 15-21): Real_S1+S2 + Proy_S3+S4+S5
+        - Semana 4 (día 22-28): Real_S1+S2+S3 + Proy_S4+S5
+        - Semana 5 (día 29+): Real_S1+S2+S3+S4 + Proy_S5
+
+        Para Oruro y Trinidad (sin gerente): Usa SOP prorrateado (SOP/5 por semana)
         """
         query = f"""
-        WITH proyecciones_gerentes AS (
-            SELECT 
-                nombre_marca as marcadir,
-                ciudad,
-                SUM(CASE 
-                    WHEN moneda = 'USD' THEN (
-                        COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana5 AS NUMERIC), 0)
-                    ) * {self.tipo_cambio}
-                    ELSE (
-                        COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
-                        COALESCE(CAST(total_semana5 AS NUMERIC), 0)
-                    )
-                END) as total_bob
+        WITH ventas_reales_semanales AS (
+            -- Obtener ventas reales por marca, ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(marcadir) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+            FROM {self.schema}.td_ventas_bob_historico
+            WHERE anio = {year}
+                AND mes = {month}
+                AND dia <= {day}
+                AND UPPER(ciudad) != 'TURISMO'
+                AND UPPER(canal) != 'TURISMO'
+                AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            GROUP BY UPPER(marcadir), UPPER(ciudad)
+        ),
+        proyecciones_gerentes_base AS (
+            -- Obtener proyecciones de gerentes por semana (convertir USD a BOB, SUMAR y NORMALIZAR)
+            SELECT
+                UPPER(nombre_marca) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana1 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana1 AS NUMERIC), 0)
+                END) as proy_s1,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana2 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana2 AS NUMERIC), 0)
+                END) as proy_s2,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana3 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana3 AS NUMERIC), 0)
+                END) as proy_s3,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana4 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana4 AS NUMERIC), 0)
+                END) as proy_s4,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana5 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana5 AS NUMERIC), 0)
+                END) as proy_s5
             FROM {self.schema}.fact_proyecciones
             WHERE anio_proyeccion = {year}
                 AND mes_proyeccion = {month}
                 AND UPPER(ciudad) != 'TURISMO'
-            GROUP BY nombre_marca, ciudad
+            GROUP BY UPPER(nombre_marca), UPPER(ciudad)
         ),
-        sop_ciudades_sin_gerente AS (
-            SELECT 
-                marcadirectorio as marcadir,
-                ciudad,
-                SUM(CAST(ingreso_neto_sus AS NUMERIC)) as total_bob
+        ciudades_todas AS (
+            -- Obtener todas las combinaciones únicas de marca-ciudad (de ventas reales y proyecciones)
+            SELECT DISTINCT marcadir, ciudad FROM ventas_reales_semanales
+            UNION
+            SELECT DISTINCT marcadir, ciudad FROM proyecciones_gerentes_base
+        ),
+        proyecciones_gerentes AS (
+            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
+            -- IMPORTANTE: Partir de TODAS las ciudades, no solo las que tienen proyección
+            SELECT
+                ct.marcadir,
+                ct.ciudad,
+                CASE
+                    -- Semana 1: Proyección completa (si no hay proyección, usar 0)
+                    WHEN {day} <= 7 THEN
+                        COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 2: Real S1 + Proy S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 3: Real S1-S2 + Proy S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 4: Real S1-S3 + Proy S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 5: Real S1-S4 + Proy S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
+                END as total_bob
+            FROM ciudades_todas ct
+            LEFT JOIN proyecciones_gerentes_base pg
+                ON ct.marcadir = pg.marcadir AND ct.ciudad = pg.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ct.marcadir = vr.marcadir AND ct.ciudad = vr.ciudad
+            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
+        ),
+        sop_ciudades_sin_gerente_base AS (
+            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(marcadirectorio) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_total_mes
             FROM {self.schema}.factpresupuesto_mensual
             WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
                 AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
                 AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
                 AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
-            GROUP BY marcadirectorio, ciudad
+            GROUP BY UPPER(marcadirectorio), UPPER(ciudad)
+        ),
+        oruro_trinidad_todas AS (
+            -- Obtener todas las marcas con ventas reales O SOP en Oruro/Trinidad
+            SELECT DISTINCT marcadir, ciudad
+            FROM ventas_reales_semanales
+            WHERE ciudad IN ('ORURO', 'TRINIDAD')
+            UNION
+            SELECT DISTINCT marcadir, ciudad
+            FROM sop_ciudades_sin_gerente_base
+        ),
+        sop_ciudades_sin_gerente AS (
+            -- Aplicar lógica híbrida con SOP prorrateado (SOP/5 por semana)
+            -- IMPORTANTE: Partir de TODAS las marcas en Oruro/Trinidad, no solo las que tienen SOP
+            SELECT
+                ot.marcadir,
+                ot.ciudad,
+                CASE
+                    -- Semana 1: SOP completo O ventas reales proyectadas
+                    WHEN {day} <= 7 THEN
+                        COALESCE(sop.sop_total_mes, 0)
+
+                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
+
+                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
+
+                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
+
+                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                END as total_bob
+            FROM oruro_trinidad_todas ot
+            LEFT JOIN sop_ciudades_sin_gerente_base sop
+                ON ot.marcadir = sop.marcadir AND ot.ciudad = sop.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ot.marcadir = vr.marcadir AND ot.ciudad = vr.ciudad
         ),
         consolidado_marcas AS (
-            SELECT 
+            SELECT
                 marcadir,
                 SUM(total_bob) as py_{year}_bob
             FROM (
@@ -513,7 +638,350 @@ class DatabaseManager:
         ORDER BY COALESCE(p.py_{year}_bob, s.sop_bob) DESC
         """
         return self.execute_query(query)
-    
+
+    def get_proyecciones_ciudad_hibrido(self, year: int, month: int, day: int) -> pd.DataFrame:
+        """
+        Obtener proyecciones híbridas por ciudad
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+
+        Similar a get_proyecciones_marca() pero agrupando por ciudad
+        """
+        query = f"""
+        WITH ventas_reales_semanales AS (
+            -- Obtener ventas reales por ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(ciudad) as ciudad,
+                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+            FROM {self.schema}.td_ventas_bob_historico
+            WHERE anio = {year}
+                AND mes = {month}
+                AND dia <= {day}
+                AND UPPER(ciudad) != 'TURISMO'
+                AND UPPER(canal) != 'TURISMO'
+                AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            GROUP BY UPPER(ciudad)
+        ),
+        proyecciones_gerentes_base AS (
+            -- Obtener proyecciones de gerentes por semana (convertir USD a BOB, SUMAR y NORMALIZAR)
+            SELECT
+                UPPER(ciudad) as ciudad,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana1 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana1 AS NUMERIC), 0)
+                END) as proy_s1,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana2 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana2 AS NUMERIC), 0)
+                END) as proy_s2,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana3 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana3 AS NUMERIC), 0)
+                END) as proy_s3,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana4 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana4 AS NUMERIC), 0)
+                END) as proy_s4,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana5 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana5 AS NUMERIC), 0)
+                END) as proy_s5
+            FROM {self.schema}.fact_proyecciones
+            WHERE anio_proyeccion = {year}
+                AND mes_proyeccion = {month}
+                AND UPPER(ciudad) != 'TURISMO'
+            GROUP BY UPPER(ciudad)
+        ),
+        ciudades_todas AS (
+            -- Obtener todas las ciudades únicas (de ventas reales y proyecciones)
+            SELECT DISTINCT ciudad FROM ventas_reales_semanales
+            UNION
+            SELECT DISTINCT ciudad FROM proyecciones_gerentes_base
+        ),
+        proyecciones_gerentes AS (
+            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
+            SELECT
+                ct.ciudad,
+                CASE
+                    -- Semana 1: Proyección completa
+                    WHEN {day} <= 7 THEN
+                        COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 2: Real S1 + Proy S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 3: Real S1-S2 + Proy S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 4: Real S1-S3 + Proy S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 5: Real S1-S4 + Proy S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
+                END as total_bob
+            FROM ciudades_todas ct
+            LEFT JOIN proyecciones_gerentes_base pg
+                ON ct.ciudad = pg.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ct.ciudad = vr.ciudad
+            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
+        ),
+        sop_ciudades_sin_gerente_base AS (
+            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(ciudad) as ciudad,
+                SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_total_mes
+            FROM {self.schema}.factpresupuesto_mensual
+            WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
+                AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
+                AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+                AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            GROUP BY UPPER(ciudad)
+        ),
+        oruro_trinidad_todas AS (
+            -- Obtener todas las ciudades Oruro/Trinidad con ventas reales O SOP
+            SELECT DISTINCT ciudad
+            FROM ventas_reales_semanales
+            WHERE ciudad IN ('ORURO', 'TRINIDAD')
+            UNION
+            SELECT DISTINCT ciudad
+            FROM sop_ciudades_sin_gerente_base
+        ),
+        sop_ciudades_sin_gerente AS (
+            -- Aplicar lógica híbrida con SOP prorrateado
+            SELECT
+                ot.ciudad,
+                CASE
+                    -- Semana 1: SOP completo
+                    WHEN {day} <= 7 THEN
+                        COALESCE(sop.sop_total_mes, 0)
+
+                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
+
+                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
+
+                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
+
+                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                END as total_bob
+            FROM oruro_trinidad_todas ot
+            LEFT JOIN sop_ciudades_sin_gerente_base sop
+                ON ot.ciudad = sop.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ot.ciudad = vr.ciudad
+        ),
+        consolidado_ciudades AS (
+            SELECT
+                ciudad,
+                SUM(total_bob) as py_{year}_bob
+            FROM (
+                SELECT ciudad, total_bob FROM proyecciones_gerentes
+                UNION ALL
+                SELECT ciudad, total_bob FROM sop_ciudades_sin_gerente
+            ) unificado
+            GROUP BY ciudad
+        )
+        SELECT * FROM consolidado_ciudades
+        ORDER BY py_{year}_bob DESC
+        """
+        return self.execute_query(query)
+
+    def get_proyecciones_ciudad_marca_hibrido(self, year: int, month: int, day: int) -> pd.DataFrame:
+        """
+        Obtener proyecciones híbridas por ciudad Y marca directorio (para drill-down)
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+
+        Similar a get_proyecciones_marca() pero con GROUP BY ciudad y marcadir
+        Output: DataFrame con [ciudad, marcadir, py_2025_bob]
+        """
+        query = f"""
+        WITH ventas_reales_semanales AS (
+            -- Obtener ventas reales por marca, ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(marcadir) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+            FROM {self.schema}.td_ventas_bob_historico
+            WHERE anio = {year}
+                AND mes = {month}
+                AND dia <= {day}
+                AND UPPER(ciudad) != 'TURISMO'
+                AND UPPER(canal) != 'TURISMO'
+                AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            GROUP BY UPPER(marcadir), UPPER(ciudad)
+        ),
+        proyecciones_gerentes_base AS (
+            -- Obtener proyecciones de gerentes por semana (convertir USD a BOB, SUMAR y NORMALIZAR)
+            SELECT
+                UPPER(nombre_marca) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana1 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana1 AS NUMERIC), 0)
+                END) as proy_s1,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana2 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana2 AS NUMERIC), 0)
+                END) as proy_s2,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana3 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana3 AS NUMERIC), 0)
+                END) as proy_s3,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana4 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana4 AS NUMERIC), 0)
+                END) as proy_s4,
+                SUM(CASE
+                    WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana5 AS NUMERIC), 0) * {self.tipo_cambio}
+                    ELSE COALESCE(CAST(total_semana5 AS NUMERIC), 0)
+                END) as proy_s5
+            FROM {self.schema}.fact_proyecciones
+            WHERE anio_proyeccion = {year}
+                AND mes_proyeccion = {month}
+                AND UPPER(ciudad) != 'TURISMO'
+            GROUP BY UPPER(nombre_marca), UPPER(ciudad)
+        ),
+        ciudades_marcas_todas AS (
+            -- Obtener todas las combinaciones únicas de marca-ciudad
+            SELECT DISTINCT marcadir, ciudad FROM ventas_reales_semanales
+            UNION
+            SELECT DISTINCT marcadir, ciudad FROM proyecciones_gerentes_base
+        ),
+        proyecciones_gerentes AS (
+            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
+            SELECT
+                ct.marcadir,
+                ct.ciudad,
+                CASE
+                    -- Semana 1: Proyección completa
+                    WHEN {day} <= 7 THEN
+                        COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 2: Real S1 + Proy S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 3: Real S1-S2 + Proy S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 4: Real S1-S3 + Proy S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+
+                    -- Semana 5: Real S1-S4 + Proy S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
+                END as total_bob
+            FROM ciudades_marcas_todas ct
+            LEFT JOIN proyecciones_gerentes_base pg
+                ON ct.marcadir = pg.marcadir AND ct.ciudad = pg.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ct.marcadir = vr.marcadir AND ct.ciudad = vr.ciudad
+            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
+        ),
+        sop_ciudades_sin_gerente_base AS (
+            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+            SELECT
+                UPPER(marcadirectorio) as marcadir,
+                UPPER(ciudad) as ciudad,
+                SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_total_mes
+            FROM {self.schema}.factpresupuesto_mensual
+            WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
+                AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
+                AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+                AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            GROUP BY UPPER(marcadirectorio), UPPER(ciudad)
+        ),
+        oruro_trinidad_todas AS (
+            -- Obtener todas las marcas con ventas reales O SOP en Oruro/Trinidad
+            SELECT DISTINCT marcadir, ciudad
+            FROM ventas_reales_semanales
+            WHERE ciudad IN ('ORURO', 'TRINIDAD')
+            UNION
+            SELECT DISTINCT marcadir, ciudad
+            FROM sop_ciudades_sin_gerente_base
+        ),
+        sop_ciudades_sin_gerente AS (
+            -- Aplicar lógica híbrida con SOP prorrateado
+            SELECT
+                ot.marcadir,
+                ot.ciudad,
+                CASE
+                    -- Semana 1: SOP completo
+                    WHEN {day} <= 7 THEN
+                        COALESCE(sop.sop_total_mes, 0)
+
+                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
+                    WHEN {day} BETWEEN 8 AND 14 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
+
+                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
+                    WHEN {day} BETWEEN 15 AND 21 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
+
+                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
+                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
+
+                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
+                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                END as total_bob
+            FROM oruro_trinidad_todas ot
+            LEFT JOIN sop_ciudades_sin_gerente_base sop
+                ON ot.marcadir = sop.marcadir AND ot.ciudad = sop.ciudad
+            LEFT JOIN ventas_reales_semanales vr
+                ON ot.marcadir = vr.marcadir AND ot.ciudad = vr.ciudad
+        )
+        SELECT marcadir, ciudad, total_bob as py_{year}_bob
+        FROM (
+            SELECT marcadir, ciudad, total_bob FROM proyecciones_gerentes
+            UNION ALL
+            SELECT marcadir, ciudad, total_bob FROM sop_ciudades_sin_gerente
+        ) unificado
+        WHERE UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        ORDER BY ciudad, py_{year}_bob DESC
+        """
+        return self.execute_query(query)
+
     def get_ventas_semanales_ciudad(self, year: int, month: int, day: int) -> pd.DataFrame:
         """Obtener ventas semanales por ciudad"""
         query = f"""
@@ -539,7 +1007,120 @@ class DatabaseManager:
         GROUP BY ciudad
         """
         return self.execute_query(query)
-    
+
+    # === QUERIES POR CIUDAD Y MARCA DIRECTORIO ===
+
+    def get_ventas_historicas_ciudad_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener ventas históricas por ciudad y marca directorio"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadir,
+            SUM(CAST(fin_01_ingreso AS NUMERIC)) as vendido_{year}_bob,
+            SUM(CAST(c9l AS NUMERIC)) as vendido_{year}_c9l
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY ciudad, marcadir
+        ORDER BY ciudad, SUM(CAST(fin_01_ingreso AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_avance_actual_ciudad_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
+        """Obtener avance actual por ciudad y marca directorio"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadir,
+            SUM(CAST(fin_01_ingreso AS NUMERIC)) as avance_{year}_bob,
+            SUM(CAST(c9l AS NUMERIC)) as avance_{year}_c9l
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND dia <= {day}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY ciudad, marcadir
+        ORDER BY ciudad, SUM(CAST(fin_01_ingreso AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_presupuesto_general_ciudad_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener presupuesto general por ciudad y marca directorio"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadirectorio as marcadir,
+            SUM(CAST(ingreso_neto_sus AS NUMERIC)) as ppto_general_bob,
+            SUM(CAST(c9l AS NUMERIC)) as ppto_general_c9l
+        FROM {self.schema}.factpresupuesto_general
+        WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
+            AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY ciudad, marcadirectorio
+        ORDER BY ciudad, SUM(CAST(ingreso_neto_sus AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_sop_ciudad_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener SOP (presupuesto mensual) por ciudad y marca directorio"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadirectorio as marcadir,
+            SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_bob,
+            SUM(CAST(c9l AS NUMERIC)) as sop_c9l
+        FROM {self.schema}.factpresupuesto_mensual
+        WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
+            AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY ciudad, marcadirectorio
+        ORDER BY ciudad, SUM(CAST(ingreso_neto_sus AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_stock_ciudad_marca(self) -> pd.DataFrame:
+        """Obtener stock actual por ciudad y marca directorio"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadirectorio as marcadir,
+            SUM(CAST(disponible AS NUMERIC) * CAST(volumen AS NUMERIC) / 9) as stock_c9l
+        FROM {self.schema}.td_stock_sap
+        WHERE UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+            AND UPPER(ciudad) != 'TURISMO'
+        GROUP BY ciudad, marcadirectorio
+        HAVING SUM(CAST(disponible AS NUMERIC) * CAST(volumen AS NUMERIC) / 9) > 0
+        ORDER BY ciudad, SUM(CAST(disponible AS NUMERIC) * CAST(volumen AS NUMERIC) / 9) DESC
+        """
+        return self.execute_query(query)
+
+    def get_venta_promedio_diaria_ciudad_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener venta promedio diaria por ciudad y marca directorio para calcular cobertura"""
+        query = f"""
+        SELECT
+            ciudad,
+            marcadir,
+            AVG(CAST(c9l AS NUMERIC)) as venta_promedio_diaria_c9l
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY ciudad, marcadir
+        ORDER BY ciudad, marcadir
+        """
+        return self.execute_query(query)
+
     # === QUERIES POR CANAL ===
     
     def get_ventas_historicas_canal(self, year: int, month: int) -> pd.DataFrame:
@@ -1078,7 +1659,7 @@ class DatabaseManager:
         WHERE anio = {year}
             AND mes = {month}
             AND dia <= {day}
-            AND UPPER(ciudad) NOT IN ('TURISMO', 'ORURO', 'TRINIDAD')
+            AND UPPER(ciudad) != 'TURISMO'
             AND UPPER(canal) != 'TURISMO'
             AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
         GROUP BY ciudad

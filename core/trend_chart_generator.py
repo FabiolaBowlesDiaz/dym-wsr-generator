@@ -257,6 +257,12 @@ class TrendChartGenerator:
                 <button class="city-tab" data-city="potosi" style="padding: 12px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s ease; margin-bottom: -2px;">
                     📍 POTOSÍ
                 </button>
+                <button class="city-tab" data-city="oruro" style="padding: 12px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s ease; margin-bottom: -2px;">
+                    📍 ORURO
+                </button>
+                <button class="city-tab" data-city="trinidad" style="padding: 12px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s ease; margin-bottom: -2px;">
+                    📍 TRINIDAD
+                </button>
             </div>
             '''
 
@@ -579,7 +585,7 @@ class TrendChartGenerator:
 
             # 2. Procesar datos por cada ciudad
             ciudades_incluidas = ['SANTA CRUZ', 'COCHABAMBA', 'LA PAZ', 'EL ALTO',
-                                 'TARIJA', 'SUCRE', 'POTOSI']
+                                 'TARIJA', 'SUCRE', 'ORURO', 'POTOSI', 'TRINIDAD']
 
             for ciudad in ciudades_incluidas:
                 ciudad_data = {
@@ -622,6 +628,28 @@ class TrendChartGenerator:
                         proy_bob = float(proyecciones_ciudad[proy_col].iloc[0])
                     else:
                         proy_bob = 0
+
+                    # Si es Oruro o Trinidad Y proy_bob = 0, usar SOP distribuido
+                    if ciudad in ['ORURO', 'TRINIDAD'] and proy_bob == 0 and sop_oruro_trinidad_df is not None:
+                        try:
+                            sop_ciudad = sop_oruro_trinidad_df[
+                                sop_oruro_trinidad_df['ciudad'].str.upper() == ciudad
+                            ]
+                            if not sop_ciudad.empty:
+                                sop_mensual = float(sop_ciudad['sop_mensual'].iloc[0])
+
+                                # Patrones de distribución semanal
+                                distribution = {
+                                    'ORURO': {1: 0.08, 2: 0.12, 3: 0.20, 4: 0.28, 5: 0.32},
+                                    'TRINIDAD': {1: 0.25, 2: 0.18, 3: 0.22, 4: 0.20, 5: 0.15}
+                                }
+
+                                if ciudad in distribution:
+                                    percentage = distribution[ciudad].get(week, 0)
+                                    proy_bob = sop_mensual * percentage
+                        except Exception as e:
+                            logger.warning(f"Error calculando SOP para {ciudad} semana {week}: {e}")
+                            proy_bob = 0
 
                     ciudad_data['proyecciones_bob'].append(proy_bob)
 

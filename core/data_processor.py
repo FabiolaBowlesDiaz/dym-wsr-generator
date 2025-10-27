@@ -283,10 +283,22 @@ class DataProcessor:
         
         # Llenar NaN con 0
         df = df.fillna(0)
-        
-        # Para C9L de proyección, usar SOP
-        df[f'py_{self.current_year}_c9l'] = df['sop_c9l']
-        
+
+        # Calcular PY C9L usando fórmula proporcional (igual que marca)
+        # PY C9L = (Avance C9L × PY BOB) / Avance BOB
+        avance_c9l_col = f'avance_{self.current_year}_c9l'
+        avance_bob_col = f'avance_{self.current_year}_bob'
+        py_bob_col = f'py_{self.current_year}_bob'
+
+        if avance_c9l_col in df.columns and avance_bob_col in df.columns and py_bob_col in df.columns:
+            df[f'py_{self.current_year}_c9l'] = df.apply(
+                lambda row: (row[avance_c9l_col] * row[py_bob_col]) / row[avance_bob_col]
+                if row[avance_bob_col] > 0 else 0,
+                axis=1
+            )
+        else:
+            df[f'py_{self.current_year}_c9l'] = 0
+
         # Calcular KPIs
         df = self._calculate_ciudad_kpis(df)
         
@@ -305,7 +317,177 @@ class DataProcessor:
         
         logger.info(f"Consolidación completa: {len(df)} ciudades procesadas")
         return df
-    
+
+    def consolidate_ciudad_marca_data(self, data: Dict[str, pd.DataFrame], data_ciudad_marca: Dict[str, pd.DataFrame]) -> Dict:
+        """
+        Consolidar datos jerárquicos por ciudad y marca directorio
+
+        Args:
+            data: Diccionario con DataFrames a nivel ciudad (para totales)
+            data_ciudad_marca: Diccionario con DataFrames a nivel ciudad-marca
+
+        Returns:
+            Diccionario con estructura jerárquica ciudad -> marca
+        """
+        logger.info("Consolidando datos jerárquicos por ciudad y marca directorio...")
+
+        # Primero consolidar datos a nivel ciudad (totales)
+        df_ciudad = self.consolidate_ciudad_data(data)
+
+        # Normalizar datos de ciudad-marca
+        normalized_ciudad_marca = {}
+        for key, df_data in data_ciudad_marca.items():
+            if not df_data.empty:
+                normalized_ciudad_marca[key] = self._normalize_dataframe_columns(df_data, ['ciudad', 'marcadir'])
+            else:
+                normalized_ciudad_marca[key] = df_data
+
+        # Crear DataFrame base para ciudad-marca
+        df_ciudad_marca = pd.DataFrame()
+
+        # Consolidar datos de ciudad-marca
+        if 'ventas_historicas_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['ventas_historicas_ciudad_marca'].empty:
+            df_ciudad_marca = normalized_ciudad_marca['ventas_historicas_ciudad_marca']
+
+        # Agregar avance actual por ciudad-marca
+        if 'avance_actual_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['avance_actual_ciudad_marca'].empty:
+            if df_ciudad_marca.empty:
+                df_ciudad_marca = normalized_ciudad_marca['avance_actual_ciudad_marca']
+            else:
+                df_ciudad_marca = pd.merge(df_ciudad_marca, normalized_ciudad_marca['avance_actual_ciudad_marca'],
+                                        on=['ciudad', 'marcadir'], how='outer')
+
+        # Agregar presupuestos por ciudad-marca
+        if 'ppto_general_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['ppto_general_ciudad_marca'].empty:
+            df_ciudad_marca = pd.merge(df_ciudad_marca, normalized_ciudad_marca['ppto_general_ciudad_marca'],
+                                    on=['ciudad', 'marcadir'], how='outer')
+
+        if 'sop_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['sop_ciudad_marca'].empty:
+            df_ciudad_marca = pd.merge(df_ciudad_marca, normalized_ciudad_marca['sop_ciudad_marca'],
+                                    on=['ciudad', 'marcadir'], how='outer')
+
+        # Agregar stock por ciudad-marca
+        if 'stock_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['stock_ciudad_marca'].empty:
+            df_ciudad_marca = pd.merge(df_ciudad_marca, normalized_ciudad_marca['stock_ciudad_marca'],
+                                    on=['ciudad', 'marcadir'], how='left')
+
+        # Agregar venta promedio diaria por ciudad-marca
+        if 'venta_promedio_diaria_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['venta_promedio_diaria_ciudad_marca'].empty:
+            df_ciudad_marca = pd.merge(df_ciudad_marca,
+                                    normalized_ciudad_marca['venta_promedio_diaria_ciudad_marca'][['ciudad', 'marcadir', 'venta_promedio_diaria_c9l']],
+                                    on=['ciudad', 'marcadir'], how='left')
+
+        # Agregar proyecciones por ciudad-marca (ENFOQUE HÍBRIDO)
+        if 'proyecciones_ciudad_marca' in normalized_ciudad_marca and not normalized_ciudad_marca['proyecciones_ciudad_marca'].empty:
+            df_ciudad_marca = pd.merge(df_ciudad_marca, normalized_ciudad_marca['proyecciones_ciudad_marca'],
+                                    on=['ciudad', 'marcadir'], how='left')
+
+        # Llenar NaN con 0
+        df_ciudad_marca = df_ciudad_marca.fillna(0)
+
+        # Calcular KPIs para ciudad-marca (CON proyecciones)
+        df_ciudad_marca = self._calculate_ciudad_marca_kpis(df_ciudad_marca)
+
+        # Ordenar por ciudad y luego por avance descendente
+        avance_col = f'avance_{self.current_year}_bob'
+        if avance_col in df_ciudad_marca.columns:
+            # Primero ordenar por ciudad según el orden establecido
+            orden_ciudades = ['Santa Cruz', 'Cochabamba', 'La Paz', 'El Alto',
+                             'Tarija', 'Sucre', 'Oruro', 'Potosi', 'Trinidad']
+            df_ciudad_marca['orden'] = df_ciudad_marca['ciudad'].apply(
+                lambda x: orden_ciudades.index(x) if x in orden_ciudades else 999
+            )
+            df_ciudad_marca = df_ciudad_marca.sort_values(['orden', avance_col], ascending=[True, False])
+            df_ciudad_marca = df_ciudad_marca.drop('orden', axis=1)
+
+        # Crear estructura jerárquica
+        resultado = {
+            'ciudad_totales': df_ciudad,
+            'ciudad_marca': df_ciudad_marca,
+            'estructura_jerarquica': self._crear_estructura_jerarquica_ciudad_marca(df_ciudad, df_ciudad_marca)
+        }
+
+        logger.info(f"Consolidación jerárquica completa: {len(df_ciudad)} ciudades, {len(df_ciudad_marca)} ciudad-marca")
+        return resultado
+
+    def _calculate_ciudad_marca_kpis(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calcular KPIs para datos de ciudad-marca (CON proyecciones híbridas)"""
+
+        # Columnas esperadas
+        vendido_col = f'vendido_{self.previous_year}_bob'
+        avance_col = f'avance_{self.current_year}_bob'
+        py_col = f'py_{self.current_year}_bob'
+        vendido_c9l = f'vendido_{self.previous_year}_c9l'
+        avance_c9l = f'avance_{self.current_year}_c9l'
+
+        # Calcular KPIs básicos
+        if 'ppto_general_bob' in df.columns and avance_col in df.columns:
+            df['AV_PG'] = df.apply(lambda x: ((x[avance_col] / x['ppto_general_bob']) - 1)
+                                  if x['ppto_general_bob'] > 0 else 0, axis=1)
+
+        if 'sop_bob' in df.columns and avance_col in df.columns:
+            df['AV_SOP'] = df.apply(lambda x: ((x[avance_col] / x['sop_bob']) - 1)
+                                   if x['sop_bob'] > 0 else 0, axis=1)
+
+        # Calcular PY C9L usando fórmula proporcional: (Avance C9L × PY BOB) / Avance BOB
+        py_c9l_col = f'py_{self.current_year}_c9l'
+        if avance_c9l in df.columns and py_col in df.columns and avance_col in df.columns:
+            df[py_c9l_col] = df.apply(
+                lambda x: (x[avance_c9l] * x[py_col]) / x[avance_col]
+                if x[avance_col] > 0 else 0,
+                axis=1
+            )
+
+        # Calcular PY25/V24 usando proyección híbrida
+        if vendido_col in df.columns and py_col in df.columns:
+            df['PY_V'] = df.apply(lambda x: ((x[py_col] / x[vendido_col]) - 1)
+                                 if x[vendido_col] > 0 else 0, axis=1)
+
+        # Calcular precios
+        if vendido_col in df.columns and vendido_c9l in df.columns:
+            df[f'precio_{self.previous_year}'] = df.apply(lambda x: x[vendido_col] / x[vendido_c9l]
+                                                          if x[vendido_c9l] > 0 else 0, axis=1)
+
+        if avance_col in df.columns and avance_c9l in df.columns:
+            df[f'precio_{self.current_year}'] = df.apply(lambda x: x[avance_col] / x[avance_c9l]
+                                                         if x[avance_c9l] > 0 else 0, axis=1)
+
+        # Incremento de precio
+        precio_prev = f'precio_{self.previous_year}'
+        precio_curr = f'precio_{self.current_year}'
+        if precio_prev in df.columns and precio_curr in df.columns:
+            df['inc_precio'] = df.apply(lambda x: ((x[precio_curr] / x[precio_prev]) - 1)
+                                       if x[precio_prev] > 0 else 0, axis=1)
+
+        # Cobertura
+        if 'stock_c9l' in df.columns and 'venta_promedio_diaria_c9l' in df.columns:
+            df['cobertura_dias'] = df.apply(lambda x: x['stock_c9l'] / x['venta_promedio_diaria_c9l']
+                                           if x['venta_promedio_diaria_c9l'] > 0 else 0, axis=1)
+
+        return df
+
+    def _crear_estructura_jerarquica_ciudad_marca(self, df_ciudad: pd.DataFrame, df_ciudad_marca: pd.DataFrame) -> Dict:
+        """
+        Crear estructura jerárquica para facilitar la renderización
+
+        Returns:
+            Diccionario con estructura ciudad -> marcas
+        """
+        estructura = {}
+
+        for _, ciudad_row in df_ciudad.iterrows():
+            ciudad = ciudad_row['ciudad']
+
+            # Obtener marcas para esta ciudad
+            marcas = df_ciudad_marca[df_ciudad_marca['ciudad'] == ciudad]
+
+            estructura[ciudad] = {
+                'datos_ciudad': ciudad_row.to_dict(),
+                'marcas': marcas.to_dict('records') if not marcas.empty else []
+            }
+
+        return estructura
+
     def consolidate_canal_data(self, data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
         Consolidar todos los datos por canal
@@ -356,10 +538,22 @@ class DataProcessor:
         
         # Llenar NaN con 0
         df = df.fillna(0)
-        
-        # Para C9L de proyección, usar SOP
-        df[f'py_{self.current_year}_c9l'] = df['sop_c9l']
-        
+
+        # Calcular PY C9L usando fórmula proporcional (igual que marca)
+        # PY C9L = (Avance C9L × PY BOB) / Avance BOB
+        avance_c9l_col = f'avance_{self.current_year}_c9l'
+        avance_bob_col = f'avance_{self.current_year}_bob'
+        py_bob_col = f'py_{self.current_year}_bob'
+
+        if avance_c9l_col in df.columns and avance_bob_col in df.columns and py_bob_col in df.columns:
+            df[f'py_{self.current_year}_c9l'] = df.apply(
+                lambda row: (row[avance_c9l_col] * row[py_bob_col]) / row[avance_bob_col]
+                if row[avance_bob_col] > 0 else 0,
+                axis=1
+            )
+        else:
+            df[f'py_{self.current_year}_c9l'] = 0
+
         # Calcular KPIs
         df = self._calculate_canal_kpis(df)
         
