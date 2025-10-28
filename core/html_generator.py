@@ -483,7 +483,97 @@ class HTMLGenerator:
             padding: 8px 5px;
             border-bottom: 2px solid #1e3a8a;
         }
-        
+
+        /* Estilos específicos para tablas de marca con drill-down (columnas congeladas) */
+        #tabla-performance-marca th:nth-child(1),
+        #tabla-performance-marca-c9l th:nth-child(1) {
+            position: sticky;
+            left: 0;
+            z-index: 11;
+            background: #1e3a8a;
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
+            text-align: center;
+            border-right: 2px solid #2563eb;
+        }
+
+        #tabla-performance-marca th:nth-child(2),
+        #tabla-performance-marca-c9l th:nth-child(2) {
+            position: sticky;
+            left: 30px;
+            z-index: 11;
+            background: #1e3a8a;
+            text-align: left;
+            min-width: 180px;
+            max-width: 220px;
+            border-right: 2px solid #2563eb;
+        }
+
+        #tabla-performance-marca td:nth-child(1),
+        #tabla-performance-marca-c9l td:nth-child(1) {
+            position: sticky;
+            left: 0;
+            z-index: 10;
+            background: white;
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
+            text-align: center;
+            border-right: 1px solid #e5e7eb;
+        }
+
+        #tabla-performance-marca td:nth-child(2),
+        #tabla-performance-marca-c9l td:nth-child(2) {
+            position: sticky;
+            left: 30px;
+            z-index: 10;
+            background: white;
+            text-align: left;
+            font-weight: 500;
+            min-width: 180px;
+            max-width: 220px;
+            border-right: 1px solid #e5e7eb;
+        }
+
+        /* Background para subfamilias en columnas congeladas */
+        #tabla-performance-marca tr.subfamilia-row td:nth-child(1),
+        #tabla-performance-marca-c9l tr.subfamilia-row td:nth-child(1),
+        #tabla-performance-marca tr.subfamilia-row td:nth-child(2),
+        #tabla-performance-marca-c9l tr.subfamilia-row td:nth-child(2) {
+            background: #f8fafc;
+        }
+
+        /* Background para fila total en columnas congeladas */
+        #tabla-performance-marca tr.total-row td:nth-child(1),
+        #tabla-performance-marca-c9l tr.total-row td:nth-child(1),
+        #tabla-performance-marca tr.total-row td:nth-child(2),
+        #tabla-performance-marca-c9l tr.total-row td:nth-child(2) {
+            background: #f0f9ff;
+        }
+
+        /* Hover para columnas congeladas */
+        #tabla-performance-marca tr:hover td:nth-child(1),
+        #tabla-performance-marca-c9l tr:hover td:nth-child(1),
+        #tabla-performance-marca tr:hover td:nth-child(2),
+        #tabla-performance-marca-c9l tr:hover td:nth-child(2) {
+            background: #f9fafb;
+        }
+
+        #tabla-performance-marca tr.subfamilia-row:hover td:nth-child(1),
+        #tabla-performance-marca-c9l tr.subfamilia-row:hover td:nth-child(1),
+        #tabla-performance-marca tr.subfamilia-row:hover td:nth-child(2),
+        #tabla-performance-marca-c9l tr.subfamilia-row:hover td:nth-child(2) {
+            background: #f1f5f9;
+        }
+
+        #tabla-performance-marca tr.total-row:hover td:nth-child(1),
+        #tabla-performance-marca-c9l tr.total-row:hover td:nth-child(1),
+        #tabla-performance-marca tr.total-row:hover td:nth-child(2),
+        #tabla-performance-marca-c9l tr.total-row:hover td:nth-child(2) {
+            background: #f0f9ff;
+        }
+
         .positive {
             color: #059669;
         }
