@@ -443,6 +443,11 @@ class DataProcessor:
             df['PY_V'] = df.apply(lambda x: ((x[py_col] / x[vendido_col]) - 1)
                                  if x[vendido_col] > 0 else 0, axis=1)
 
+        # Calcular PY/SOP - Proyección de Cierre sobre SOP
+        if 'sop_bob' in df.columns and py_col in df.columns:
+            df['PY_SOP'] = df.apply(lambda x: ((x[py_col] / x['sop_bob']) - 1)
+                                    if x['sop_bob'] > 0 else 0, axis=1)
+
         # Calcular precios
         if vendido_col in df.columns and vendido_c9l in df.columns:
             df[f'precio_{self.previous_year}'] = df.apply(lambda x: x[vendido_col] / x[vendido_c9l]
@@ -634,7 +639,11 @@ class DataProcessor:
         
         if py_col in df.columns and vendido_col in df.columns:
             df['PY_V'] = ((df[py_col] / df[vendido_col]) - 1).replace([np.inf, -np.inf], 0)
-        
+
+        # PY/SOP - Proyección de Cierre sobre SOP
+        if py_col in df.columns and 'sop_bob' in df.columns:
+            df['PY_SOP'] = ((df[py_col] / df['sop_bob']) - 1).replace([np.inf, -np.inf], 0)
+
         # Cobertura de stock
         if 'stock_c9l' in df.columns and 'venta_promedio_diaria_c9l' in df.columns:
             df['cobertura_dias'] = (df['stock_c9l'] / df['venta_promedio_diaria_c9l']).replace([np.inf, -np.inf], 0)
@@ -669,7 +678,11 @@ class DataProcessor:
         
         if py_col in df.columns and vendido_col in df.columns:
             df['PY_V'] = ((df[py_col] / df[vendido_col]) - 1).replace([np.inf, -np.inf], 0)
-        
+
+        # PY/SOP - Proyección de Cierre sobre SOP
+        if py_col in df.columns and 'sop_bob' in df.columns:
+            df['PY_SOP'] = ((df[py_col] / df['sop_bob']) - 1).replace([np.inf, -np.inf], 0)
+
         # KPIs para C9L
         vendido_c9l_col = f'vendido_{prev_year}_c9l'
         avance_c9l_col = f'avance_{year}_c9l'

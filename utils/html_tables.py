@@ -188,6 +188,7 @@ class HTMLTableGenerator:
                     <th>SOP</th>
                     <th>Avance 2025</th>
                     <th>Proyección de Cierre 2025</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -224,6 +225,7 @@ class HTMLTableGenerator:
             sop = marca_row.get('sop_bob', 0)
             avance = marca_row.get(avance_col, 0)
             py = marca_row.get(py_col, 0)
+            py_sop = marca_row.get('PY_SOP', 0)
             av_pg = marca_row.get('AV_PG', 0)
             av_sop = marca_row.get('AV_SOP', 0)
             py_v = marca_row.get('PY_V', 0)
@@ -238,6 +240,7 @@ class HTMLTableGenerator:
             tiene_subfamilias = not subfamilias.empty
 
             # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -256,6 +259,7 @@ class HTMLTableGenerator:
                     <td class="text-right">{self.gen.format_number(sop)}</td>
                     <td class="text-right">{self.gen.format_number(avance)}</td>
                     <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -299,6 +303,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(sub_ppto)}</td>
                         <td class="text-right">{self.gen.format_number(sub_sop)}</td>
                         <td class="text-right">{self.gen.format_number(sub_avance)}</td>
+                        <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right {sub_av_pg_class}">{self.gen.format_number(sub_av_pg, is_percentage=True)}</td>
                         <td class="text-right {sub_av_sop_class}">{self.gen.format_number(sub_av_sop, is_percentage=True)}</td>
@@ -423,6 +428,7 @@ class HTMLTableGenerator:
                     <th>SOP</th>
                     <th>Avance 2025</th>
                     <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -469,6 +475,7 @@ class HTMLTableGenerator:
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
             stock = marca_row.get('stock_c9l', 0)
             cobertura = marca_row.get('cobertura_dias', 0)
@@ -478,6 +485,7 @@ class HTMLTableGenerator:
             tiene_subfamilias = not subfamilias.empty
 
             # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -495,6 +503,7 @@ class HTMLTableGenerator:
                     <td class="text-right">{self.gen.format_number(sop)}</td>
                     <td class="text-right">{self.gen.format_number(avance)}</td>
                     <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -534,6 +543,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(sub_ppto)}</td>
                         <td class="text-right">{self.gen.format_number(sub_sop)}</td>
                         <td class="text-right">{self.gen.format_number(sub_avance)}</td>
+                        <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right {sub_av_pg_class}">{self.gen.format_number(sub_av_pg, is_percentage=True)}</td>
                         <td class="text-right {sub_av_sop_class}">{self.gen.format_number(sub_av_sop, is_percentage=True)}</td>
@@ -989,6 +999,7 @@ class HTMLTableGenerator:
                     <th>SOP (BOB)</th>
                     <th>Avance 2025 (BOB)</th>
                     <th>Proyección de Cierre 2025 (BOB)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1018,6 +1029,7 @@ class HTMLTableGenerator:
             sop = ciudad_row.get('sop_bob', 0)
             avance = ciudad_row.get(avance_col, 0)
             py = ciudad_row.get(py_col, 0)
+            py_sop = ciudad_row.get('PY_SOP', 0)
             av_pg = ciudad_row.get('AV_PG', 0)
             av_sop = ciudad_row.get('AV_SOP', 0)
             py_v = ciudad_row.get('PY_V', 0)
@@ -1027,6 +1039,7 @@ class HTMLTableGenerator:
             tiene_marcas = not marcas.empty
 
             # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1044,6 +1057,7 @@ class HTMLTableGenerator:
                     <td class="text-right">{self.gen.format_number(sop)}</td>
                     <td class="text-right">{self.gen.format_number(avance)}</td>
                     <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -1061,11 +1075,13 @@ class HTMLTableGenerator:
                     marca_sop = marca_row.get('sop_bob', 0)
                     marca_avance = marca_row.get(avance_col, 0)
                     marca_py = marca_row.get(py_col, 0)  # Proyección híbrida por ciudad-marca
+                    marca_py_sop = marca_row.get('PY_SOP', 0)
                     marca_av_pg = marca_row.get('AV_PG', 0)
                     marca_av_sop = marca_row.get('AV_SOP', 0)
                     marca_py_v = marca_row.get('PY_V', 0)
 
                     # Clases CSS para KPIs de marca
+                    marca_py_sop_class = self._get_kpi_class(marca_py_sop)
                     marca_av_pg_class = self._get_kpi_class(marca_av_pg)
                     marca_av_sop_class = self._get_kpi_class(marca_av_sop)
                     marca_py_v_class = self._get_kpi_class(marca_py_v)
@@ -1079,6 +1095,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(marca_sop)}</td>
                         <td class="text-right">{self.gen.format_number(marca_avance)}</td>
                         <td class="text-right">{self.gen.format_number(marca_py)}</td>
+                        <td class="text-right {marca_py_sop_class}">{self.gen.format_number(marca_py_sop, is_percentage=True)}</td>
                         <td class="text-right {marca_av_pg_class}">{self.gen.format_number(marca_av_pg, is_percentage=True)}</td>
                         <td class="text-right {marca_av_sop_class}">{self.gen.format_number(marca_av_sop, is_percentage=True)}</td>
                         <td class="text-right {marca_py_v_class}">{self.gen.format_number(marca_py_v, is_percentage=True)}</td>
@@ -1253,6 +1270,7 @@ class HTMLTableGenerator:
                     <th>SOP (C9L)</th>
                     <th>Avance 2025 (C9L)</th>
                     <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1278,7 +1296,9 @@ class HTMLTableGenerator:
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1291,6 +1311,7 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -1411,6 +1432,7 @@ class HTMLTableGenerator:
                     <th>SOP (BOB)</th>
                     <th>Avance 2025 (BOB)</th>
                     <th>PY 2025 (BOB)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1431,11 +1453,13 @@ class HTMLTableGenerator:
             sop = row.get('sop_bob', 0)
             avance = row[avance_col] if avance_col in df.columns else 0
             py = row[py_col] if py_col in df.columns else 0
+            py_sop = row.get('PY_SOP', 0)
             av_pg = row.get('AV_PG', 0)
             av_sop = row.get('AV_SOP', 0)
             py_v = row.get('PY_V', 0)
 
             # Determinar clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1448,6 +1472,7 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -1567,6 +1592,7 @@ class HTMLTableGenerator:
                     <th>SOP (C9L)</th>
                     <th>Avance 2025 (C9L)</th>
                     <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1591,7 +1617,9 @@ class HTMLTableGenerator:
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1604,8 +1632,9 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
-                    <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
+                    <td class="{ av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
                 </tr>
             """
