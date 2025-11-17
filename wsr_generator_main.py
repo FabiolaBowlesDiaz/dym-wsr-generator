@@ -95,7 +95,13 @@ class WSRGeneratorSystem:
                 data['marca'], data['marca_subfamilia']
             )
             marcas_df = estructura_marca['marca_totales']
-            ciudades_df = self.data_processor.consolidate_ciudad_data(data['ciudad'])
+
+            # Consolidar datos con estructura jerárquica para ciudades
+            estructura_ciudad = self.data_processor.consolidate_ciudad_marca_data(
+                data['ciudad'], data['ciudad_marca']
+            )
+            ciudades_df = estructura_ciudad['ciudad_totales']
+
             canales_df = self.data_processor.consolidate_canal_data(data['canal'])
             
             # 4. Calcular resumen ejecutivo
@@ -126,6 +132,7 @@ class WSRGeneratorSystem:
                 marcas_df, ciudades_df, canales_df,
                 summary_data, comentarios_analysis, hitrate_data,
                 estructura_marca=estructura_marca,
+                estructura_ciudad=estructura_ciudad,
                 trend_chart_html=trend_chart_html
             )
 
@@ -150,7 +157,7 @@ class WSRGeneratorSystem:
     
     def _fetch_all_data(self):
         """Obtener todos los datos necesarios de la base de datos"""
-        data = {'marca': {}, 'ciudad': {}, 'canal': {}, 'marca_subfamilia': {}}
+        data = {'marca': {}, 'ciudad': {}, 'canal': {}, 'marca_subfamilia': {}, 'ciudad_marca': {}}
 
         # === DATOS POR MARCA ===
         logger.info("  • Obteniendo datos por marca...")
@@ -172,7 +179,7 @@ class WSRGeneratorSystem:
         )
 
         data['marca']['proyecciones'] = self.db_manager.get_proyecciones_marca(
-            self.current_year, self.current_month
+            self.current_year, self.current_month, self.current_day
         )
 
         data['marca']['stock'] = self.db_manager.get_stock_marca()
@@ -228,15 +235,44 @@ class WSRGeneratorSystem:
         data['ciudad']['sop'] = self.db_manager.get_sop_ciudad(
             self.current_year, self.current_month
         )
-        
-        data['ciudad']['proyecciones'] = self.db_manager.get_proyecciones_ciudad(
-            self.current_year, self.current_month
+
+        data['ciudad']['proyecciones'] = self.db_manager.get_proyecciones_ciudad_hibrido(
+            self.current_year, self.current_month, self.current_day
         )
-        
+
         data['ciudad']['ventas_semanales'] = self.db_manager.get_ventas_semanales_ciudad(
             self.current_year, self.current_month, self.current_day
         )
-        
+
+        # === DATOS POR CIUDAD Y MARCA DIRECTORIO ===
+        logger.info("  • Obteniendo datos por ciudad y marca directorio...")
+
+        data['ciudad_marca']['ventas_historicas_ciudad_marca'] = self.db_manager.get_ventas_historicas_ciudad_marca(
+            self.previous_year, self.current_month
+        )
+
+        data['ciudad_marca']['avance_actual_ciudad_marca'] = self.db_manager.get_avance_actual_ciudad_marca(
+            self.current_year, self.current_month, self.current_day
+        )
+
+        data['ciudad_marca']['ppto_general_ciudad_marca'] = self.db_manager.get_presupuesto_general_ciudad_marca(
+            self.current_year, self.current_month
+        )
+
+        data['ciudad_marca']['sop_ciudad_marca'] = self.db_manager.get_sop_ciudad_marca(
+            self.current_year, self.current_month
+        )
+
+        data['ciudad_marca']['proyecciones_ciudad_marca'] = self.db_manager.get_proyecciones_ciudad_marca_hibrido(
+            self.current_year, self.current_month, self.current_day
+        )
+
+        data['ciudad_marca']['stock_ciudad_marca'] = self.db_manager.get_stock_ciudad_marca()
+
+        data['ciudad_marca']['venta_promedio_diaria_ciudad_marca'] = self.db_manager.get_venta_promedio_diaria_ciudad_marca(
+            self.current_year, self.current_month
+        )
+
         # === DATOS POR CANAL ===
         logger.info("  • Obteniendo datos por canal...")
         
@@ -313,7 +349,7 @@ class WSRGeneratorSystem:
 
     def _generate_html_report(self, marcas_df, ciudades_df, canales_df,
                              summary_data, comentarios_analysis, hitrate_data=None,
-                             estructura_marca=None, trend_chart_html=""):
+                             estructura_marca=None, estructura_ciudad=None, trend_chart_html=""):
         """Generar el reporte HTML completo"""
 
         # Extender HTMLGenerator con métodos de tablas
@@ -325,7 +361,13 @@ class WSRGeneratorSystem:
         else:
             self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(df)
 
-        self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(df)
+        # Si tenemos estructura jerárquica de ciudad, pasar a _generate_ciudad_tables
+        if estructura_ciudad:
+            self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(
+                df, estructura_jerarquica=estructura_ciudad
+            )
+        else:
+            self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(df)
         self.html_generator._generate_canal_tables = lambda df: self._generate_canal_tables(df)
         self.html_generator._generate_stock_analysis = lambda df: self._generate_stock_analysis(df)
         self.html_generator._generate_footer = lambda: self._generate_footer()
@@ -339,13 +381,18 @@ class WSRGeneratorSystem:
         
         return html
     
-    def _generate_ciudad_tables(self, df):
+    def _generate_ciudad_tables(self, df, estructura_jerarquica=None):
         """Generar tablas de ciudad"""
         if df.empty:
             return "<p>No hay datos disponibles para ciudades</p>"
 
         html = ""
-        html += self.table_generator.generate_ciudad_performance_bob(df)
+        # Si tenemos estructura jerárquica, usar la tabla con desglose por marca
+        if estructura_jerarquica:
+            html += self.table_generator.generate_ciudad_performance_bob_drilldown(estructura_jerarquica)
+        else:
+            html += self.table_generator.generate_ciudad_performance_bob(df)
+
         html += self.table_generator.generate_ciudad_semanal_bob(df)
         html += self.table_generator.generate_ciudad_performance_c9l(df)
         html += self.table_generator.generate_ciudad_semanal_c9l(df)

@@ -61,7 +61,7 @@ class HTMLTableGenerator:
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
                     <th>Avance 2025 (BOB)</th>
-                    <th>PY 2025 (BOB)</th>
+                    <th>Proyección de Cierre 2025 (BOB)</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -187,7 +187,8 @@ class HTMLTableGenerator:
                     <th>Ppto General</th>
                     <th>SOP</th>
                     <th>Avance 2025</th>
-                    <th>PY 2025</th>
+                    <th>Proyección de Cierre 2025</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -224,6 +225,7 @@ class HTMLTableGenerator:
             sop = marca_row.get('sop_bob', 0)
             avance = marca_row.get(avance_col, 0)
             py = marca_row.get(py_col, 0)
+            py_sop = marca_row.get('PY_SOP', 0)
             av_pg = marca_row.get('AV_PG', 0)
             av_sop = marca_row.get('AV_SOP', 0)
             py_v = marca_row.get('PY_V', 0)
@@ -238,6 +240,7 @@ class HTMLTableGenerator:
             tiene_subfamilias = not subfamilias.empty
 
             # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -256,6 +259,7 @@ class HTMLTableGenerator:
                     <td class="text-right">{self.gen.format_number(sop)}</td>
                     <td class="text-right">{self.gen.format_number(avance)}</td>
                     <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -299,6 +303,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(sub_ppto)}</td>
                         <td class="text-right">{self.gen.format_number(sub_sop)}</td>
                         <td class="text-right">{self.gen.format_number(sub_avance)}</td>
+                        <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right {sub_av_pg_class}">{self.gen.format_number(sub_av_pg, is_percentage=True)}</td>
                         <td class="text-right {sub_av_sop_class}">{self.gen.format_number(sub_av_sop, is_percentage=True)}</td>
@@ -422,7 +427,8 @@ class HTMLTableGenerator:
                     <th>Ppto General</th>
                     <th>SOP</th>
                     <th>Avance 2025</th>
-                    <th>PY 2025</th>
+                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -469,6 +475,7 @@ class HTMLTableGenerator:
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
             stock = marca_row.get('stock_c9l', 0)
             cobertura = marca_row.get('cobertura_dias', 0)
@@ -478,6 +485,7 @@ class HTMLTableGenerator:
             tiene_subfamilias = not subfamilias.empty
 
             # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -495,6 +503,7 @@ class HTMLTableGenerator:
                     <td class="text-right">{self.gen.format_number(sop)}</td>
                     <td class="text-right">{self.gen.format_number(avance)}</td>
                     <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -534,6 +543,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(sub_ppto)}</td>
                         <td class="text-right">{self.gen.format_number(sub_sop)}</td>
                         <td class="text-right">{self.gen.format_number(sub_avance)}</td>
+                        <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right {sub_av_pg_class}">{self.gen.format_number(sub_av_pg, is_percentage=True)}</td>
                         <td class="text-right {sub_av_sop_class}">{self.gen.format_number(sub_av_sop, is_percentage=True)}</td>
@@ -973,6 +983,211 @@ class HTMLTableGenerator:
 
         return html
 
+    def generate_ciudad_performance_bob_drilldown(self, estructura: dict) -> str:
+        """Generar tabla de performance por ciudad con drill-down por marca directorio"""
+
+        html = """
+        <h3>PERFORMANCE POR CIUDAD - BOB (Con desglose por Marca Directorio)</h3>
+        <div class="table-container">
+        <table id="tabla-performance-ciudad">
+            <thead>
+                <tr>
+                    <th style="width: 30px;"></th>
+                    <th>Ciudad / Marca</th>
+                    <th>Vendido 2024 (BOB)</th>
+                    <th>Ppto General (BOB)</th>
+                    <th>SOP (BOB)</th>
+                    <th>Avance 2025 (BOB)</th>
+                    <th>Proyección de Cierre 2025 (BOB)</th>
+                    <th>PY/SOP</th>
+                    <th>AV25/PG</th>
+                    <th>AV25/SOP</th>
+                    <th>PY25/V24</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+
+        # Obtener DataFrames de la estructura
+        df_ciudad = estructura.get('ciudad_totales')
+        df_ciudad_marca = estructura.get('ciudad_marca')
+        estructura_jerarquica = estructura.get('estructura_jerarquica', {})
+
+        # Columnas esperadas
+        vendido_col = f'vendido_{self.previous_year}_bob'
+        avance_col = f'avance_{self.current_year}_bob'
+        py_col = f'py_{self.current_year}_bob'
+
+        # Procesar cada ciudad
+        for idx, ciudad_row in df_ciudad.iterrows():
+            ciudad = ciudad_row['ciudad']
+            ciudad_id = ciudad.replace(' ', '_').replace('.', '')
+
+            # Datos de la ciudad
+            vendido = ciudad_row.get(vendido_col, 0)
+            ppto = ciudad_row.get('ppto_general_bob', 0)
+            sop = ciudad_row.get('sop_bob', 0)
+            avance = ciudad_row.get(avance_col, 0)
+            py = ciudad_row.get(py_col, 0)
+            py_sop = ciudad_row.get('PY_SOP', 0)
+            av_pg = ciudad_row.get('AV_PG', 0)
+            av_sop = ciudad_row.get('AV_SOP', 0)
+            py_v = ciudad_row.get('PY_V', 0)
+
+            # Verificar si tiene marcas
+            marcas = df_ciudad_marca[df_ciudad_marca['ciudad'] == ciudad] if not df_ciudad_marca.empty else pd.DataFrame()
+            tiene_marcas = not marcas.empty
+
+            # Clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
+            av_pg_class = self._get_kpi_class(av_pg)
+            av_sop_class = self._get_kpi_class(av_sop)
+            py_v_class = self._get_kpi_class(py_v)
+
+            # Fila de ciudad
+            expand_button = f'<span class="expand-icon" onclick="toggleMarca(\'{ciudad_id}\')">[+]</span>' if tiene_marcas else ''
+            html += f"""
+                <tr class="ciudad-row" data-ciudad="{ciudad_id}">
+                    <td class="expand-cell">
+                        {expand_button}
+                    </td>
+                    <td class="ciudad-nombre"><strong>{ciudad}</strong></td>
+                    <td class="text-right">{self.gen.format_number(vendido)}</td>
+                    <td class="text-right">{self.gen.format_number(ppto)}</td>
+                    <td class="text-right">{self.gen.format_number(sop)}</td>
+                    <td class="text-right">{self.gen.format_number(avance)}</td>
+                    <td class="text-right">{self.gen.format_number(py)}</td>
+                    <td class="text-right {py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
+                    <td class="text-right {av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
+                    <td class="text-right {av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
+                    <td class="text-right {py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
+                </tr>
+            """
+
+            # Filas de marcas (inicialmente ocultas)
+            if tiene_marcas:
+                for _, marca_row in marcas.iterrows():
+                    marca = marca_row.get('marcadir', '')
+
+                    # Datos de la marca
+                    marca_vendido = marca_row.get(vendido_col, 0)
+                    marca_ppto = marca_row.get('ppto_general_bob', 0)
+                    marca_sop = marca_row.get('sop_bob', 0)
+                    marca_avance = marca_row.get(avance_col, 0)
+                    marca_py = marca_row.get(py_col, 0)  # Proyección híbrida por ciudad-marca
+                    marca_py_sop = marca_row.get('PY_SOP', 0)
+                    marca_av_pg = marca_row.get('AV_PG', 0)
+                    marca_av_sop = marca_row.get('AV_SOP', 0)
+                    marca_py_v = marca_row.get('PY_V', 0)
+
+                    # Clases CSS para KPIs de marca
+                    marca_py_sop_class = self._get_kpi_class(marca_py_sop)
+                    marca_av_pg_class = self._get_kpi_class(marca_av_pg)
+                    marca_av_sop_class = self._get_kpi_class(marca_av_sop)
+                    marca_py_v_class = self._get_kpi_class(marca_py_v)
+
+                    html += f"""
+                    <tr class="marca-row marca-{ciudad_id}" style="display: none;">
+                        <td></td>
+                        <td class="marca-indent">├─ {marca}</td>
+                        <td class="text-right">{self.gen.format_number(marca_vendido)}</td>
+                        <td class="text-right">{self.gen.format_number(marca_ppto)}</td>
+                        <td class="text-right">{self.gen.format_number(marca_sop)}</td>
+                        <td class="text-right">{self.gen.format_number(marca_avance)}</td>
+                        <td class="text-right">{self.gen.format_number(marca_py)}</td>
+                        <td class="text-right {marca_py_sop_class}">{self.gen.format_number(marca_py_sop, is_percentage=True)}</td>
+                        <td class="text-right {marca_av_pg_class}">{self.gen.format_number(marca_av_pg, is_percentage=True)}</td>
+                        <td class="text-right {marca_av_sop_class}">{self.gen.format_number(marca_av_sop, is_percentage=True)}</td>
+                        <td class="text-right {marca_py_v_class}">{self.gen.format_number(marca_py_v, is_percentage=True)}</td>
+                    </tr>
+                    """
+
+        # Fila de totales
+        total_vendido = df_ciudad[vendido_col].sum() if vendido_col in df_ciudad.columns else 0
+        total_ppto = df_ciudad['ppto_general_bob'].sum() if 'ppto_general_bob' in df_ciudad.columns else 0
+        total_sop = df_ciudad['sop_bob'].sum() if 'sop_bob' in df_ciudad.columns else 0
+        total_avance = df_ciudad[avance_col].sum() if avance_col in df_ciudad.columns else 0
+        total_py = df_ciudad[py_col].sum() if py_col in df_ciudad.columns else 0
+
+        # KPIs totales
+        av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
+        av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
+        py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        html += f"""
+                <tr class="total-row">
+                    <td></td>
+                    <td><strong>TOTAL</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(total_vendido)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(total_ppto)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        """
+
+        # Agregar JavaScript y CSS
+        html += """
+        <script>
+        function toggleMarca(ciudad) {
+            const rows = document.querySelectorAll('.marca-' + ciudad);
+            const icon = event.target;
+            const isExpanded = icon.textContent === '[-]';
+
+            rows.forEach(row => {
+                row.style.display = isExpanded ? 'none' : 'table-row';
+            });
+
+            icon.textContent = isExpanded ? '[+]' : '[-]';
+        }
+        </script>
+
+        <style>
+        #tabla-performance-ciudad .expand-cell {
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #tabla-performance-ciudad .expand-icon {
+            display: inline-block;
+            width: 20px;
+            font-weight: bold;
+            color: #2563eb;
+        }
+
+        #tabla-performance-ciudad .expand-icon:hover {
+            color: #1d4ed8;
+        }
+
+        #tabla-performance-ciudad .ciudad-row {
+            background-color: #f8fafc;
+            font-weight: 600;
+        }
+
+        #tabla-performance-ciudad .marca-row {
+            background-color: #ffffff;
+        }
+
+        #tabla-performance-ciudad .marca-indent {
+            padding-left: 30px;
+            color: #64748b;
+        }
+
+        #tabla-performance-ciudad .text-right {
+            text-align: right;
+        }
+        </style>
+        """
+
+        return html
+
     def generate_ciudad_semanal_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla semanal de ciudades en BOB"""
 
@@ -1054,7 +1269,8 @@ class HTMLTableGenerator:
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
                     <th>Avance 2025 (C9L)</th>
-                    <th>PY 2025 (C9L)</th>
+                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1073,14 +1289,16 @@ class HTMLTableGenerator:
             ppto = row.get('ppto_general_c9l', 0)
             sop = row.get('sop_c9l', 0)
             avance = row[avance_col] if avance_col in df.columns else 0
-            py = row.get('sop_c9l', 0)  # Para C9L usar SOP como proyección
+            py = row[py_col] if py_col in df.columns else 0  # Usar proyección calculada proporcional
 
 
             # KPIs C9L
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1093,6 +1311,7 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -1104,7 +1323,7 @@ class HTMLTableGenerator:
         total_ppto = df['ppto_general_c9l'].sum() if 'ppto_general_c9l' in df.columns else 0
         total_sop = df['sop_c9l'].sum() if 'sop_c9l' in df.columns else 0
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
-        total_py = total_sop  # Para C9L usar SOP
+        total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
@@ -1213,6 +1432,7 @@ class HTMLTableGenerator:
                     <th>SOP (BOB)</th>
                     <th>Avance 2025 (BOB)</th>
                     <th>PY 2025 (BOB)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1233,11 +1453,13 @@ class HTMLTableGenerator:
             sop = row.get('sop_bob', 0)
             avance = row[avance_col] if avance_col in df.columns else 0
             py = row[py_col] if py_col in df.columns else 0
+            py_sop = row.get('PY_SOP', 0)
             av_pg = row.get('AV_PG', 0)
             av_sop = row.get('AV_SOP', 0)
             py_v = row.get('PY_V', 0)
 
             # Determinar clases CSS para KPIs
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1250,6 +1472,7 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
                     <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
@@ -1368,7 +1591,8 @@ class HTMLTableGenerator:
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
                     <th>Avance 2025 (C9L)</th>
-                    <th>PY 2025 (C9L)</th>
+                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>PY/SOP</th>
                     <th>AV25/PG</th>
                     <th>AV25/SOP</th>
                     <th>PY25/V24</th>
@@ -1387,13 +1611,15 @@ class HTMLTableGenerator:
             ppto = row.get('ppto_general_c9l', 0)
             sop = row.get('sop_c9l', 0)
             avance = row[avance_col] if avance_col in df.columns else 0
-            py = row.get('sop_c9l', 0)  # Para C9L usar SOP como proyección
+            py = row[py_col] if py_col in df.columns else 0  # Usar proyección calculada proporcional
 
             # KPIs C9L
             av_pg = ((avance / ppto) - 1) if ppto > 0 else 0
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
 
+            py_sop_class = self._get_kpi_class(py_sop)
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
@@ -1406,8 +1632,9 @@ class HTMLTableGenerator:
                     <td>{self.gen.format_number(sop)}</td>
                     <td>{self.gen.format_number(avance)}</td>
                     <td>{self.gen.format_number(py)}</td>
+                    <td class="{py_sop_class}">{self.gen.format_number(py_sop, is_percentage=True)}</td>
                     <td class="{av_pg_class}">{self.gen.format_number(av_pg, is_percentage=True)}</td>
-                    <td class="{av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
+                    <td class="{ av_sop_class}">{self.gen.format_number(av_sop, is_percentage=True)}</td>
                     <td class="{py_v_class}">{self.gen.format_number(py_v, is_percentage=True)}</td>
                 </tr>
             """
@@ -1417,7 +1644,7 @@ class HTMLTableGenerator:
         total_ppto = df['ppto_general_c9l'].sum() if 'ppto_general_c9l' in df.columns else 0
         total_sop = df['sop_c9l'].sum() if 'sop_c9l' in df.columns else 0
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
-        total_py = total_sop  # Para C9L usar SOP
+        total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
