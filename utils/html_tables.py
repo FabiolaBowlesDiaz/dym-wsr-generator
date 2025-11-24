@@ -325,6 +325,7 @@ class HTMLTableGenerator:
         total_stock = df_marca['stock_c9l'].sum() if 'stock_c9l' in df_marca.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
@@ -341,6 +342,13 @@ class HTMLTableGenerator:
         total_venta_diaria = df_marca['venta_promedio_diaria_c9l'].sum() if 'venta_promedio_diaria_c9l' in df_marca.columns else 0
         cobertura_total = (total_stock / total_venta_diaria) if total_venta_diaria > 0 else 0
 
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
+        inc_precio_total_class = self._get_kpi_class(inc_precio_total)
+
         html += f"""
                 <tr class="total-row">
                     <td></td>
@@ -350,12 +358,13 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(precio_total_24)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(precio_total_25)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(inc_precio_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {inc_precio_total_class}"><strong>{self.gen.format_number(inc_precio_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_stock, 0)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(cobertura_total, 0)}</strong></td>
                 </tr>
@@ -575,6 +584,7 @@ class HTMLTableGenerator:
         total_stock = df_marca['stock_c9l'].sum() if 'stock_c9l' in df_marca.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
@@ -582,6 +592,12 @@ class HTMLTableGenerator:
         # Cobertura promedio
         total_venta_diaria = df_marca['venta_promedio_diaria_c9l'].sum() if 'venta_promedio_diaria_c9l' in df_marca.columns else 0
         cobertura_total = (total_stock / total_venta_diaria) if total_venta_diaria > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -592,9 +608,10 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_stock, 0)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(cobertura_total, 0)}</strong></td>
                 </tr>
@@ -1110,9 +1127,16 @@ class HTMLTableGenerator:
         total_py = df_ciudad[py_col].sum() if py_col in df_ciudad.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1123,9 +1147,10 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1325,9 +1350,16 @@ class HTMLTableGenerator:
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
         total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1337,10 +1369,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
-                    <td><strong>-</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1487,9 +1519,16 @@ class HTMLTableGenerator:
         total_py = df[py_col].sum() if py_col in df.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1499,9 +1538,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1646,9 +1686,16 @@ class HTMLTableGenerator:
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
         total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1658,9 +1705,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>

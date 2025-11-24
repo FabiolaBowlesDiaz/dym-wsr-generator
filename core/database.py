@@ -7,19 +7,20 @@ Configuración corregida para dwh_saiv con schema auto
 import psycopg2
 import pandas as pd
 import logging
-from typing import Dict, Optional
-from datetime import datetime
+from typing import Dict, Optional, Tuple, List
+from datetime import datetime, date
+import calendar
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
     """Gestor de base de datos para el WSR"""
-    
+
     def __init__(self, config: dict, schema: str = 'auto'):
         """
         Inicializar el gestor de base de datos
-        
+
         Args:
             config: Diccionario con configuración de conexión
             schema: Schema de base de datos a usar (default: 'auto')
@@ -28,7 +29,70 @@ class DatabaseManager:
         self.schema = schema  # Será 'auto' según tu configuración
         self.conn = None
         self.tipo_cambio = 6.96  # BOB/USD
-        
+
+    def get_calendar_week_ranges(self, year: int, month: int) -> List[Tuple[int, int]]:
+        """
+        Calcula los rangos de días para cada semana CALENDARIO del mes.
+        Las semanas van de Lunes a Domingo.
+
+        Args:
+            year: Año
+            month: Mes (1-12)
+
+        Returns:
+            Lista de tuplas (día_inicio, día_fin) para cada semana del mes
+            Ejemplo para Nov 2025: [(1,2), (3,9), (10,16), (17,23), (24,30)]
+        """
+        # Obtener el primer y último día del mes
+        first_day = date(year, month, 1)
+        last_day_num = calendar.monthrange(year, month)[1]
+
+        weeks = []
+        current_day = 1
+
+        # Primera semana: desde día 1 hasta el próximo domingo
+        first_weekday = first_day.weekday()  # 0=Lunes, 6=Domingo
+        if first_weekday == 6:  # Si empieza en domingo
+            weeks.append((1, 1))
+            current_day = 2
+        else:
+            # Días hasta el domingo (6 - weekday)
+            days_to_sunday = 6 - first_weekday
+            end_first_week = min(1 + days_to_sunday, last_day_num)
+            weeks.append((1, end_first_week))
+            current_day = end_first_week + 1
+
+        # Semanas intermedias (Lunes a Domingo completas)
+        while current_day <= last_day_num:
+            week_end = min(current_day + 6, last_day_num)
+            weeks.append((current_day, week_end))
+            current_day = week_end + 1
+
+        # Asegurar que siempre tengamos 5 semanas (rellenar si es necesario)
+        while len(weeks) < 5:
+            weeks.append((last_day_num + 1, last_day_num + 1))  # Semana vacía
+
+        logger.debug(f"Semanas calendario para {month}/{year}: {weeks}")
+        return weeks[:5]  # Máximo 5 semanas
+
+    def get_current_calendar_week(self, year: int, month: int, day: int) -> int:
+        """
+        Determina en qué semana calendario del mes estamos.
+
+        Args:
+            year: Año
+            month: Mes
+            day: Día del mes
+
+        Returns:
+            Número de semana (1-5)
+        """
+        weeks = self.get_calendar_week_ranges(year, month)
+        for i, (start, end) in enumerate(weeks, 1):
+            if start <= day <= end:
+                return i
+        return 5  # Por defecto última semana
+
     def connect(self) -> bool:
         """Establecer conexión con la base de datos"""
         try:
@@ -148,28 +212,45 @@ class DatabaseManager:
     def get_proyecciones_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
         """
         Obtener proyecciones híbridas por marca
-        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas CALENDARIO pasadas + proyecciones de semanas futuras
+
+        CORREGIDO: Usa semanas calendario (Lunes-Domingo) en lugar de rangos fijos de días.
+        Ejemplo Nov 2025: S1=1-2, S2=3-9, S3=10-16, S4=17-23, S5=24-30
 
         Lógica por semana actual:
-        - Semana 1 (día 1-7): Proyección completa (S1+S2+S3+S4+S5)
-        - Semana 2 (día 8-14): Real_S1 + Proy_S2+S3+S4+S5
-        - Semana 3 (día 15-21): Real_S1+S2 + Proy_S3+S4+S5
-        - Semana 4 (día 22-28): Real_S1+S2+S3 + Proy_S4+S5
-        - Semana 5 (día 29+): Real_S1+S2+S3+S4 + Proy_S5
+        - Semana 1: Proyección completa (S1+S2+S3+S4+S5)
+        - Semana 2: Real_S1 + Proy_S2+S3+S4+S5
+        - Semana 3: Real_S1+S2 + Proy_S3+S4+S5
+        - Semana 4: Real_S1+S2+S3 + Proy_S4+S5
+        - Semana 5: Real_S1+S2+S3+S4 + Proy_S5
 
-        Para Oruro y Trinidad (sin gerente): Usa SOP prorrateado (SOP/5 por semana)
+        Para Oruro y Trinidad (sin gerente): Usa SOP COMPLETO (no prorrateado)
         """
+        # Calcular rangos de semanas calendario
+        weeks = self.get_calendar_week_ranges(year, month)
+        current_week = self.get_current_calendar_week(year, month, day)
+
+        # Extraer rangos de días para cada semana
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
+        logger.info(f"Semanas calendario: S1={s1_start}-{s1_end}, S2={s2_start}-{s2_end}, S3={s3_start}-{s3_end}, S4={s4_start}-{s4_end}, S5={s5_start}-{s5_end}")
+        logger.info(f"Día actual: {day}, Semana actual: {current_week}")
+
         query = f"""
         WITH ventas_reales_semanales AS (
-            -- Obtener ventas reales por marca, ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            -- Obtener ventas reales por marca, ciudad y semana CALENDARIO
             SELECT
                 UPPER(marcadir) as marcadir,
                 UPPER(ciudad) as ciudad,
-                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
-                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
-                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
-                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
-                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+                SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
             FROM {self.schema}.td_ventas_bob_historico
             WHERE anio = {year}
                 AND mes = {month}
@@ -217,33 +298,32 @@ class DatabaseManager:
             SELECT DISTINCT marcadir, ciudad FROM proyecciones_gerentes_base
         ),
         proyecciones_gerentes AS (
-            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
-            -- IMPORTANTE: Partir de TODAS las ciudades, no solo las que tienen proyección
+            -- Aplicar lógica híbrida: Ventas reales de semanas CERRADAS + Proyecciones de semanas FUTURAS
             SELECT
                 ct.marcadir,
                 ct.ciudad,
                 CASE
-                    -- Semana 1: Proyección completa (si no hay proyección, usar 0)
-                    WHEN {day} <= 7 THEN
+                    -- Semana 1: Proyección completa
+                    WHEN {current_week} = 1 THEN
                         COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
                         COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 2: Real S1 + Proy S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
+                    -- Semana 2: Real S1 (cerrada) + Proy S2-S5
+                    WHEN {current_week} = 2 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
                         COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 3: Real S1-S2 + Proy S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
+                    -- Semana 3: Real S1-S2 (cerradas) + Proy S3-S5
+                    WHEN {current_week} = 3 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 4: Real S1-S3 + Proy S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
+                    -- Semana 4: Real S1-S3 (cerradas) + Proy S4-S5
+                    WHEN {current_week} = 4 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 5: Real S1-S4 + Proy S5
+                    -- Semana 5: Real S1-S4 (cerradas) + Proy S5
                     ELSE
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
@@ -256,7 +336,7 @@ class DatabaseManager:
             WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
         ),
         sop_ciudades_sin_gerente_base AS (
-            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+            -- Obtener SOP COMPLETO de Oruro y Trinidad (no prorrateado)
             SELECT
                 UPPER(marcadirectorio) as marcadir,
                 UPPER(ciudad) as ciudad,
@@ -278,35 +358,42 @@ class DatabaseManager:
             FROM sop_ciudades_sin_gerente_base
         ),
         sop_ciudades_sin_gerente AS (
-            -- Aplicar lógica híbrida con SOP prorrateado (SOP/5 por semana)
-            -- IMPORTANTE: Partir de TODAS las marcas en Oruro/Trinidad, no solo las que tienen SOP
+            -- Para Oruro/Trinidad: Ventas reales CERRADAS + SOP con PORCENTAJES PERSONALIZADOS
+            -- ORURO: S1=8%, S2=12%, S3=20%, S4=28%, S5=32%
+            -- TRINIDAD: S1=25%, S2=18%, S3=22%, S4=20%, S5=15%
             SELECT
                 ot.marcadir,
                 ot.ciudad,
                 CASE
-                    -- Semana 1: SOP completo O ventas reales proyectadas
-                    WHEN {day} <= 7 THEN
+                    -- Semana 1: SOP completo (todas las semanas son proyección)
+                    WHEN {current_week} = 1 THEN
                         COALESCE(sop.sop_total_mes, 0)
 
-                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
+                    -- Semana 2: Real S1 + SOP porcentaje restante (S2+S3+S4+S5)
+                    WHEN {current_week} = 2 THEN
+                        COALESCE(vr.venta_real_s1, 0) +
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.92, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.75, 0) END
 
-                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
+                    -- Semana 3: Real S1-S2 + SOP porcentaje restante (S3+S4+S5)
+                    WHEN {current_week} = 3 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.80, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.57, 0) END
 
-                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
+                    -- Semana 4: Real S1-S3 + SOP porcentaje restante (S4+S5)
+                    WHEN {current_week} = 4 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
+                        COALESCE(vr.venta_real_s3, 0) +
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.60, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.35, 0) END
 
-                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                    -- Semana 5: Real S1-S4 + SOP porcentaje restante (S5)
                     ELSE
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.32, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.15, 0) END
                 END as total_bob
             FROM oruro_trinidad_todas ot
             LEFT JOIN sop_ciudades_sin_gerente_base sop
@@ -347,20 +434,27 @@ class DatabaseManager:
         return self.execute_query(query)
     
     def get_ventas_semanales_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
-        """Obtener ventas semanales por marca"""
+        """Obtener ventas semanales por marca (SEMANAS CALENDARIO)"""
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
-        SELECT 
+        SELECT
             marcadir,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
-            SUM(CASE WHEN dia > 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
@@ -428,21 +522,28 @@ class DatabaseManager:
 
     def get_ventas_semanales_nacional(self, year: int, month: int, day: int) -> pd.DataFrame:
         """
-        Obtener ventas semanales a nivel nacional (BOB y C9L)
+        Obtener ventas semanales a nivel nacional (BOB y C9L) - SEMANAS CALENDARIO
         Para el gráfico de tendencia comparativa
         """
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
         SELECT
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
-            SUM(CASE WHEN dia > 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
@@ -642,20 +743,31 @@ class DatabaseManager:
     def get_proyecciones_ciudad_hibrido(self, year: int, month: int, day: int) -> pd.DataFrame:
         """
         Obtener proyecciones híbridas por ciudad
-        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas CALENDARIO pasadas + proyecciones de semanas futuras
 
-        Similar a get_proyecciones_marca() pero agrupando por ciudad
+        CORREGIDO: Usa semanas calendario (Lunes-Domingo) + SOP ponderado para Oruro/Trinidad
         """
+        # Calcular rangos de semanas calendario
+        weeks = self.get_calendar_week_ranges(year, month)
+        current_week = self.get_current_calendar_week(year, month, day)
+
+        # Extraer rangos de días para cada semana
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
         WITH ventas_reales_semanales AS (
-            -- Obtener ventas reales por ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            -- Obtener ventas reales por ciudad y semana CALENDARIO
             SELECT
                 UPPER(ciudad) as ciudad,
-                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
-                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
-                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
-                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
-                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+                SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
             FROM {self.schema}.td_ventas_bob_historico
             WHERE anio = {year}
                 AND mes = {month}
@@ -666,7 +778,7 @@ class DatabaseManager:
             GROUP BY UPPER(ciudad)
         ),
         proyecciones_gerentes_base AS (
-            -- Obtener proyecciones de gerentes por semana (convertir USD a BOB, SUMAR y NORMALIZAR)
+            -- Proyecciones de gerentes (ciudades CON gerente)
             SELECT
                 UPPER(ciudad) as ciudad,
                 SUM(CASE
@@ -695,51 +807,8 @@ class DatabaseManager:
                 AND UPPER(ciudad) != 'TURISMO'
             GROUP BY UPPER(ciudad)
         ),
-        ciudades_todas AS (
-            -- Obtener todas las ciudades únicas (de ventas reales y proyecciones)
-            SELECT DISTINCT ciudad FROM ventas_reales_semanales
-            UNION
-            SELECT DISTINCT ciudad FROM proyecciones_gerentes_base
-        ),
-        proyecciones_gerentes AS (
-            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
-            SELECT
-                ct.ciudad,
-                CASE
-                    -- Semana 1: Proyección completa
-                    WHEN {day} <= 7 THEN
-                        COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
-                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
-
-                    -- Semana 2: Real S1 + Proy S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
-                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
-
-                    -- Semana 3: Real S1-S2 + Proy S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
-
-                    -- Semana 4: Real S1-S3 + Proy S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
-
-                    -- Semana 5: Real S1-S4 + Proy S5
-                    ELSE
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
-                END as total_bob
-            FROM ciudades_todas ct
-            LEFT JOIN proyecciones_gerentes_base pg
-                ON ct.ciudad = pg.ciudad
-            LEFT JOIN ventas_reales_semanales vr
-                ON ct.ciudad = vr.ciudad
-            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
-        ),
-        sop_ciudades_sin_gerente_base AS (
-            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+        sop_oruro_trinidad AS (
+            -- SOP total para Oruro y Trinidad
             SELECT
                 UPPER(ciudad) as ciudad,
                 SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_total_mes
@@ -747,65 +816,70 @@ class DatabaseManager:
             WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
                 AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
                 AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
-                AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
             GROUP BY UPPER(ciudad)
         ),
-        oruro_trinidad_todas AS (
-            -- Obtener todas las ciudades Oruro/Trinidad con ventas reales O SOP
-            SELECT DISTINCT ciudad
-            FROM ventas_reales_semanales
-            WHERE ciudad IN ('ORURO', 'TRINIDAD')
-            UNION
-            SELECT DISTINCT ciudad
-            FROM sop_ciudades_sin_gerente_base
-        ),
-        sop_ciudades_sin_gerente AS (
-            -- Aplicar lógica híbrida con SOP prorrateado
+        ciudades_con_gerente AS (
+            -- Proyección híbrida para ciudades CON gerente
             SELECT
-                ot.ciudad,
+                pg.ciudad,
                 CASE
-                    -- Semana 1: SOP completo
-                    WHEN {day} <= 7 THEN
+                    WHEN {current_week} = 1 THEN
+                        COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+                    WHEN {current_week} = 2 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
+                        COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+                    WHEN {current_week} = 3 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+                    WHEN {current_week} = 4 THEN
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
+                    ELSE
+                        COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
+                        COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
+                END as total_bob
+            FROM proyecciones_gerentes_base pg
+            LEFT JOIN ventas_reales_semanales vr ON pg.ciudad = vr.ciudad
+            WHERE pg.ciudad NOT IN ('ORURO', 'TRINIDAD')
+        ),
+        ciudades_sin_gerente AS (
+            -- Proyección híbrida para Oruro y Trinidad (SOP ponderado)
+            -- ORURO: S1=8%, S2=12%, S3=20%, S4=28%, S5=32%
+            -- TRINIDAD: S1=25%, S2=18%, S3=22%, S4=20%, S5=15%
+            SELECT
+                sop.ciudad,
+                CASE
+                    WHEN {current_week} = 1 THEN
                         COALESCE(sop.sop_total_mes, 0)
-
-                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
-
-                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
+                    WHEN {current_week} = 2 THEN
+                        COALESCE(vr.venta_real_s1, 0) +
+                        CASE WHEN sop.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.92, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.75, 0) END
+                    WHEN {current_week} = 3 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
-
-                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
+                        CASE WHEN sop.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.80, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.57, 0) END
+                    WHEN {current_week} = 4 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
-
-                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                        COALESCE(vr.venta_real_s3, 0) +
+                        CASE WHEN sop.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.60, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.35, 0) END
                     ELSE
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                        CASE WHEN sop.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.32, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.15, 0) END
                 END as total_bob
-            FROM oruro_trinidad_todas ot
-            LEFT JOIN sop_ciudades_sin_gerente_base sop
-                ON ot.ciudad = sop.ciudad
-            LEFT JOIN ventas_reales_semanales vr
-                ON ot.ciudad = vr.ciudad
-        ),
-        consolidado_ciudades AS (
-            SELECT
-                ciudad,
-                SUM(total_bob) as py_{year}_bob
-            FROM (
-                SELECT ciudad, total_bob FROM proyecciones_gerentes
-                UNION ALL
-                SELECT ciudad, total_bob FROM sop_ciudades_sin_gerente
-            ) unificado
-            GROUP BY ciudad
+            FROM sop_oruro_trinidad sop
+            LEFT JOIN ventas_reales_semanales vr ON sop.ciudad = vr.ciudad
         )
-        SELECT * FROM consolidado_ciudades
+        SELECT ciudad, total_bob as py_{year}_bob
+        FROM (
+            SELECT ciudad, total_bob FROM ciudades_con_gerente
+            UNION ALL
+            SELECT ciudad, total_bob FROM ciudades_sin_gerente
+        ) unificado
         ORDER BY py_{year}_bob DESC
         """
         return self.execute_query(query)
@@ -813,22 +887,34 @@ class DatabaseManager:
     def get_proyecciones_ciudad_marca_hibrido(self, year: int, month: int, day: int) -> pd.DataFrame:
         """
         Obtener proyecciones híbridas por ciudad Y marca directorio (para drill-down)
-        ENFOQUE HÍBRIDO: Combina ventas reales de semanas pasadas + proyecciones de semanas futuras
+        ENFOQUE HÍBRIDO: Combina ventas reales de semanas CALENDARIO + proyecciones de semanas futuras
 
+        CORREGIDO: Usa semanas calendario (Lun-Dom) + ponderaciones SOP personalizadas
         Similar a get_proyecciones_marca() pero con GROUP BY ciudad y marcadir
         Output: DataFrame con [ciudad, marcadir, py_2025_bob]
         """
+        # Calcular rangos de semanas calendario
+        weeks = self.get_calendar_week_ranges(year, month)
+        current_week = self.get_current_calendar_week(year, month, day)
+
+        # Extraer rangos de días para cada semana
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
         WITH ventas_reales_semanales AS (
-            -- Obtener ventas reales por marca, ciudad y semana (NORMALIZADO A MAYÚSCULAS)
+            -- Obtener ventas reales por marca, ciudad y semana CALENDARIO
             SELECT
                 UPPER(marcadir) as marcadir,
                 UPPER(ciudad) as ciudad,
-                SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
-                SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
-                SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
-                SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
-                SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
+                SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s1,
+                SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s2,
+                SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s3,
+                SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s4,
+                SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as venta_real_s5
             FROM {self.schema}.td_ventas_bob_historico
             WHERE anio = {year}
                 AND mes = {month}
@@ -876,32 +962,32 @@ class DatabaseManager:
             SELECT DISTINCT marcadir, ciudad FROM proyecciones_gerentes_base
         ),
         proyecciones_gerentes AS (
-            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras
+            -- Aplicar lógica híbrida: Ventas reales + Proyecciones futuras (SEMANAS CALENDARIO)
             SELECT
                 ct.marcadir,
                 ct.ciudad,
                 CASE
-                    -- Semana 1: Proyección completa
-                    WHEN {day} <= 7 THEN
+                    -- Semana calendario 1: Proyección completa
+                    WHEN {current_week} = 1 THEN
                         COALESCE(pg.proy_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
                         COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 2: Real S1 + Proy S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
+                    -- Semana calendario 2: Real S1 + Proy S2-S5
+                    WHEN {current_week} = 2 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(pg.proy_s2, 0) + COALESCE(pg.proy_s3, 0) +
                         COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 3: Real S1-S2 + Proy S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
+                    -- Semana calendario 3: Real S1-S2 + Proy S3-S5
+                    WHEN {current_week} = 3 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(pg.proy_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 4: Real S1-S3 + Proy S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
+                    -- Semana calendario 4: Real S1-S3 + Proy S4-S5
+                    WHEN {current_week} = 4 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(pg.proy_s4, 0) + COALESCE(pg.proy_s5, 0)
 
-                    -- Semana 5: Real S1-S4 + Proy S5
+                    -- Semana calendario 5: Real S1-S4 + Proy S5
                     ELSE
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) + COALESCE(pg.proy_s5, 0)
@@ -936,34 +1022,42 @@ class DatabaseManager:
             FROM sop_ciudades_sin_gerente_base
         ),
         sop_ciudades_sin_gerente AS (
-            -- Aplicar lógica híbrida con SOP prorrateado
+            -- Aplicar lógica híbrida con SOP ponderado (SEMANAS CALENDARIO + PESOS ESPECÍFICOS)
+            -- ORURO: S1=8%, S2=12%, S3=20%, S4=28%, S5=32%
+            -- TRINIDAD: S1=25%, S2=18%, S3=22%, S4=20%, S5=15%
             SELECT
                 ot.marcadir,
                 ot.ciudad,
                 CASE
-                    -- Semana 1: SOP completo
-                    WHEN {day} <= 7 THEN
+                    -- Semana calendario 1: SOP completo (100%)
+                    WHEN {current_week} = 1 THEN
                         COALESCE(sop.sop_total_mes, 0)
 
-                    -- Semana 2: Real S1 + SOP prorrateado para S2-S5
-                    WHEN {day} BETWEEN 8 AND 14 THEN
-                        COALESCE(vr.venta_real_s1, 0) + COALESCE((sop.sop_total_mes / 5.0) * 4, 0)
+                    -- Semana calendario 2: Real S1 + SOP ponderado para S2-S5
+                    WHEN {current_week} = 2 THEN
+                        COALESCE(vr.venta_real_s1, 0) +
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.92, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.75, 0) END
 
-                    -- Semana 3: Real S1-S2 + SOP prorrateado para S3-S5
-                    WHEN {day} BETWEEN 15 AND 21 THEN
+                    -- Semana calendario 3: Real S1-S2 + SOP ponderado para S3-S5
+                    WHEN {current_week} = 3 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0) * 3, 0)
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.80, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.57, 0) END
 
-                    -- Semana 4: Real S1-S3 + SOP prorrateado para S4-S5
-                    WHEN {day} BETWEEN 22 AND 28 THEN
+                    -- Semana calendario 4: Real S1-S3 + SOP ponderado para S4-S5
+                    WHEN {current_week} = 4 THEN
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
-                        COALESCE(vr.venta_real_s3, 0) + COALESCE((sop.sop_total_mes / 5.0) * 2, 0)
+                        COALESCE(vr.venta_real_s3, 0) +
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.60, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.35, 0) END
 
-                    -- Semana 5: Real S1-S4 + SOP prorrateado para S5
+                    -- Semana calendario 5: Real S1-S4 + SOP ponderado para S5
                     ELSE
                         COALESCE(vr.venta_real_s1, 0) + COALESCE(vr.venta_real_s2, 0) +
                         COALESCE(vr.venta_real_s3, 0) + COALESCE(vr.venta_real_s4, 0) +
-                        COALESCE((sop.sop_total_mes / 5.0), 0)
+                        CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.32, 0)
+                             ELSE COALESCE(sop.sop_total_mes * 0.15, 0) END
                 END as total_bob
             FROM oruro_trinidad_todas ot
             LEFT JOIN sop_ciudades_sin_gerente_base sop
@@ -983,20 +1077,27 @@ class DatabaseManager:
         return self.execute_query(query)
 
     def get_ventas_semanales_ciudad(self, year: int, month: int, day: int) -> pd.DataFrame:
-        """Obtener ventas semanales por ciudad"""
+        """Obtener ventas semanales por ciudad (SEMANAS CALENDARIO)"""
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
-        SELECT 
+        SELECT
             ciudad,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
-            SUM(CASE WHEN dia > 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
@@ -1197,20 +1298,27 @@ class DatabaseManager:
         return self.execute_query(query)
     
     def get_ventas_semanales_canal(self, year: int, month: int, day: int) -> pd.DataFrame:
-        """Obtener ventas semanales por canal"""
+        """Obtener ventas semanales por canal (SEMANAS CALENDARIO)"""
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
-        SELECT 
+        SELECT
             canal,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
-            SUM(CASE WHEN dia > 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
@@ -1584,21 +1692,28 @@ class DatabaseManager:
         return self.execute_query(query)
 
     def get_ventas_semanales_marca_subfamilia(self, year: int, month: int, day: int) -> pd.DataFrame:
-        """Obtener ventas semanales por marca y subfamilia"""
+        """Obtener ventas semanales por marca y subfamilia (SEMANAS CALENDARIO)"""
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
         SELECT
             marcadir,
             subfamilia,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
-            SUM(CASE WHEN dia > 28 THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob,
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana1_c9l,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana2_c9l,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana3_c9l,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana4_c9l,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana5_c9l
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
@@ -1646,15 +1761,22 @@ class DatabaseManager:
         return self.execute_query(query)
 
     def get_ventas_semanales_por_ciudad_detalle(self, year: int, month: int, day: int) -> pd.DataFrame:
-        """Obtener ventas semanales desglosadas por cada ciudad"""
+        """Obtener ventas semanales desglosadas por cada ciudad (SEMANAS CALENDARIO)"""
+        weeks = self.get_calendar_week_ranges(year, month)
+        s1_start, s1_end = weeks[0]
+        s2_start, s2_end = weeks[1]
+        s3_start, s3_end = weeks[2]
+        s4_start, s4_end = weeks[3]
+        s5_start, s5_end = weeks[4]
+
         query = f"""
         SELECT
             ciudad,
-            SUM(CASE WHEN dia BETWEEN 1 AND 7 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
-            SUM(CASE WHEN dia BETWEEN 8 AND 14 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
-            SUM(CASE WHEN dia BETWEEN 15 AND 21 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
-            SUM(CASE WHEN dia BETWEEN 22 AND 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
-            SUM(CASE WHEN dia > 28 THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob
+            SUM(CASE WHEN dia BETWEEN {s1_start} AND {s1_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana1_bob,
+            SUM(CASE WHEN dia BETWEEN {s2_start} AND {s2_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana2_bob,
+            SUM(CASE WHEN dia BETWEEN {s3_start} AND {s3_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana3_bob,
+            SUM(CASE WHEN dia BETWEEN {s4_start} AND {s4_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana4_bob,
+            SUM(CASE WHEN dia BETWEEN {s5_start} AND {s5_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana5_bob
         FROM {self.schema}.td_ventas_bob_historico
         WHERE anio = {year}
             AND mes = {month}
