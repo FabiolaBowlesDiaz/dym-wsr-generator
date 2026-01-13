@@ -50,23 +50,23 @@ class HTMLTableGenerator:
     def generate_marca_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por marca en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Marca</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>Proyección de Cierre 2025 (BOB)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
-                    <th>IngNeto/C9L 2024</th>
-                    <th>IngNeto/C9L 2025</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>Proyección de Cierre {self.current_year} (BOB)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
+                    <th>IngNeto/C9L {self.previous_year}</th>
+                    <th>IngNeto/C9L {self.current_year}</th>
                     <th>%Inc/Dec Precio</th>
                     <th>Stock (C9L)</th>
                     <th>Cobertura (días)</th>
@@ -175,7 +175,7 @@ class HTMLTableGenerator:
     def generate_marca_performance_bob_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por marca con drill-down por subfamilia"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - BOB (Con desglose por Subfamilia)</h3>
         <div class="table-container">
         <table id="tabla-performance-marca">
@@ -183,17 +183,17 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Marca / Subfamilia</th>
-                    <th>Vendido 2024</th>
+                    <th>Vendido {self.previous_year}</th>
                     <th>Ppto General</th>
                     <th>SOP</th>
-                    <th>Avance 2025</th>
-                    <th>Proyección de Cierre 2025</th>
+                    <th>Avance {self.current_year}</th>
+                    <th>Proyección de Cierre {self.current_year}</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
-                    <th>IngNeto/C9L 2024</th>
-                    <th>IngNeto/C9L 2025</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
+                    <th>IngNeto/C9L {self.previous_year}</th>
+                    <th>IngNeto/C9L {self.current_year}</th>
                     <th>%Inc Precio</th>
                     <th>Stock C9L</th>
                     <th>Cobertura</th>
@@ -424,7 +424,7 @@ class HTMLTableGenerator:
     def generate_marca_performance_c9l_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por marca en C9L con drill-down por subfamilia"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - Unidades C9L (Con desglose por Subfamilia)</h3>
         <div class="table-container">
         <table id="tabla-performance-marca-c9l">
@@ -432,15 +432,15 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Marca / Subfamilia</th>
-                    <th>Vendido 2024</th>
+                    <th>Vendido {self.previous_year}</th>
                     <th>Ppto General</th>
                     <th>SOP</th>
-                    <th>Avance 2025</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year}</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                     <th>Stock C9L</th>
                     <th>Cobertura</th>
                 </tr>
@@ -708,21 +708,21 @@ class HTMLTableGenerator:
     def generate_marca_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por marca en C9L"""
         
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Marca</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>PY 2025 (C9L)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>PY {self.current_year} (C9L)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                     <th>Stock (C9L)</th>
                     <th>Cobertura (días)</th>
                 </tr>
@@ -912,21 +912,21 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por ciudad en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Ciudad</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>PY 2025 (BOB)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>PY {self.current_year} (BOB)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1003,7 +1003,7 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_bob_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por ciudad con drill-down por marca directorio"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - BOB (Con desglose por Marca Directorio)</h3>
         <div class="table-container">
         <table id="tabla-performance-ciudad">
@@ -1011,15 +1011,15 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Ciudad / Marca</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>Proyección de Cierre 2025 (BOB)</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>Proyección de Cierre {self.current_year} (BOB)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1283,22 +1283,22 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por ciudad en C9L"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Ciudad</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1452,22 +1452,22 @@ class HTMLTableGenerator:
     def generate_canal_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por canal en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CANAL - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Canal</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>PY 2025 (BOB)</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>PY {self.current_year} (BOB)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1620,22 +1620,22 @@ class HTMLTableGenerator:
     def generate_canal_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por canal en C9L"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CANAL - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Canal</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>

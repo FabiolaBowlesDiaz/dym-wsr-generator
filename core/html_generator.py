@@ -216,6 +216,7 @@ class HTMLGenerator:
 <body>
     <div class="container">
         <h1>WEEKLY SALES REPORT - DYM</h1>
+        <p style="text-align: center; color: #666; font-size: 0.9em; margin-top: -10px;">Versión 2.0</p>
         <h2>Período: Semana {self.current_week} de {mes_nombre} {self.current_year}</h2>
         <h3>Fecha de generación: {self.current_date.strftime('%d/%m/%Y')}</h3>
         
@@ -671,7 +672,7 @@ class HTMLGenerator:
             <div class="kpi-grid">
                 <div class="kpi-card">
                     <div class="kpi-icon">💰</div>
-                    <div class="kpi-title">AVANCE 2025 ACTUAL</div>
+                    <div class="kpi-title">AVANCE {self.current_year} ACTUAL</div>
                     <div class="kpi-value">{self.format_number(total_avance, 1)}M</div>
                     <div class="kpi-subtitle">BOB vendidos a la fecha</div>
                 </div>
