@@ -5,8 +5,9 @@ Genera el reporte HTML completo con estilos y formato
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Optional
-from datetime import datetime
+from typing import Dict, Optional, List, Tuple
+from datetime import datetime, date
+import calendar
 import logging
 from utils.business_days import BusinessDaysCalculator
 
@@ -35,21 +36,53 @@ class HTMLGenerator:
             9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
         }
         
-        # Calcular semana actual
-        self.current_week = self._calculate_week(self.current_day)
-        
-    def _calculate_week(self, day: int) -> int:
-        """Calcular en qué semana del mes estamos"""
-        if day <= 7:
-            return 1
-        elif day <= 14:
-            return 2
-        elif day <= 21:
-            return 3
-        elif day <= 28:
-            return 4
+        # Calcular semana actual usando semanas calendario (Lunes-Domingo)
+        self.current_week = self._get_current_calendar_week()
+
+    def _get_calendar_week_ranges(self) -> List[Tuple[int, int]]:
+        """
+        Calcula los rangos de dias para cada semana CALENDARIO del mes.
+        Las semanas van de Lunes a Domingo.
+        """
+        year = self.current_year
+        month = self.current_month
+
+        first_day = date(year, month, 1)
+        last_day_num = calendar.monthrange(year, month)[1]
+
+        weeks = []
+        current_day = 1
+
+        # Primera semana: desde dia 1 hasta el proximo domingo
+        first_weekday = first_day.weekday()  # 0=Lunes, 6=Domingo
+        if first_weekday == 6:  # Si empieza en domingo
+            weeks.append((1, 1))
+            current_day = 2
         else:
-            return 5
+            days_to_sunday = 6 - first_weekday
+            end_first_week = min(1 + days_to_sunday, last_day_num)
+            weeks.append((1, end_first_week))
+            current_day = end_first_week + 1
+
+        # Semanas intermedias (Lunes a Domingo completas)
+        while current_day <= last_day_num:
+            week_end = min(current_day + 6, last_day_num)
+            weeks.append((current_day, week_end))
+            current_day = week_end + 1
+
+        # Asegurar que siempre tengamos 5 semanas
+        while len(weeks) < 5:
+            weeks.append((last_day_num + 1, last_day_num + 1))
+
+        return weeks[:5]
+
+    def _get_current_calendar_week(self) -> int:
+        """Determina en que semana calendario del mes estamos."""
+        weeks = self._get_calendar_week_ranges()
+        for i, (start, end) in enumerate(weeks, 1):
+            if start <= self.current_day <= end:
+                return i
+        return 5  # Por defecto ultima semana
     
     def format_number(self, value, decimals=2, is_percentage=False, show_plus=False):
         """Formatear números para el reporte"""
@@ -216,6 +249,7 @@ class HTMLGenerator:
 <body>
     <div class="container">
         <h1>WEEKLY SALES REPORT - DYM</h1>
+        <p style="text-align: center; color: #666; font-size: 0.9em; margin-top: -10px;">Versión 2.0</p>
         <h2>Período: Semana {self.current_week} de {mes_nombre} {self.current_year}</h2>
         <h3>Fecha de generación: {self.current_date.strftime('%d/%m/%Y')}</h3>
         
@@ -671,7 +705,7 @@ class HTMLGenerator:
             <div class="kpi-grid">
                 <div class="kpi-card">
                     <div class="kpi-icon">💰</div>
-                    <div class="kpi-title">AVANCE 2025 ACTUAL</div>
+                    <div class="kpi-title">AVANCE {self.current_year} ACTUAL</div>
                     <div class="kpi-value">{self.format_number(total_avance, 1)}M</div>
                     <div class="kpi-subtitle">BOB vendidos a la fecha</div>
                 </div>

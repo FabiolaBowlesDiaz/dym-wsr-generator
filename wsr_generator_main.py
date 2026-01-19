@@ -462,8 +462,8 @@ class WSRGeneratorSystem:
             <ul>
                 <li>Tipo de cambio aplicado: 6.96 BOB/USD para conversión de proyecciones</li>
                 <li>Cobertura de stock: Calculada con base en venta promedio diaria últimos {self.current_day} días</li>
-                <li>PY 2025 por canal: Calculado mediante multiplicador ponderado (80% peso en avance actual)</li>
-                <li>Ciudades sin gerente: Oruro y Trinidad usan presupuesto mensual como proyección</li>
+                <li>PY {self.current_year} por canal: Calculado mediante multiplicador ponderado (80% peso en avance actual)</li>
+                <li>Ciudades sin gerente: {"Trinidad usa" if self.current_year >= 2026 else "Oruro y Trinidad usan"} presupuesto mensual como proyeccion</li>
                 <li>Exclusiones aplicadas: Ciudad/Canal Turismo y marcas "Ninguna"/"Sin marca asignada"</li>
                 <li>Datos actualizados al: {self.current_date.strftime('%d/%m/%Y %H:%M')}</li>
             </ul>

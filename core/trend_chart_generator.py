@@ -6,7 +6,8 @@ Compara ventas reales vs proyecciones de gerentes (BOB)
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, date
+import calendar
 import logging
 import json
 
@@ -40,19 +41,64 @@ class TrendChartGenerator:
             'cumplimiento_bajo': '#EF4444'    # Rojo
         }
 
-    def _get_current_week(self) -> int:
-        """Determinar la semana actual del mes"""
-        day = self.current_day
-        if day <= 7:
-            return 1
-        elif day <= 14:
-            return 2
-        elif day <= 21:
-            return 3
-        elif day <= 28:
-            return 4
+    def _get_calendar_week_ranges(self) -> List[Tuple[int, int]]:
+        """
+        Calcula los rangos de días para cada semana CALENDARIO del mes.
+        Las semanas van de Lunes a Domingo.
+
+        Returns:
+            Lista de tuplas (día_inicio, día_fin) para cada semana del mes
+        """
+        year = self.current_year
+        month = self.current_month
+
+        first_day = date(year, month, 1)
+        last_day_num = calendar.monthrange(year, month)[1]
+
+        weeks = []
+        current_day = 1
+
+        # Primera semana: desde día 1 hasta el primer domingo
+        first_weekday = first_day.weekday()  # 0=Lunes, 6=Domingo
+
+        if first_weekday == 6:  # Si empieza en domingo
+            weeks.append((1, 1))
+            current_day = 2
         else:
-            return 5
+            # Días hasta el domingo
+            days_to_sunday = 6 - first_weekday
+            end_first_week = min(1 + days_to_sunday, last_day_num)
+            weeks.append((1, end_first_week))
+            current_day = end_first_week + 1
+
+        # Semanas siguientes: lunes a domingo (7 días cada una)
+        while current_day <= last_day_num:
+            week_end = min(current_day + 6, last_day_num)
+            weeks.append((current_day, week_end))
+            current_day = week_end + 1
+
+        # Asegurar que siempre tengamos 5 semanas (algunas pueden estar vacías)
+        while len(weeks) < 5:
+            weeks.append((last_day_num + 1, last_day_num + 1))  # Semana vacía
+
+        return weeks[:5]  # Máximo 5 semanas
+
+    def _get_current_week(self) -> int:
+        """
+        Determina en qué semana CALENDARIO del mes estamos.
+        Usa semanas reales (Lunes-Domingo) en lugar de rangos fijos.
+
+        Returns:
+            Número de semana actual (1-5)
+        """
+        weeks = self._get_calendar_week_ranges()
+
+        for i, (start, end) in enumerate(weeks, 1):
+            if start <= self.current_day <= end:
+                return i
+
+        # Si estamos más allá del último día del mes, retornar semana 5
+        return 5
 
     def process_weekly_data(self,
                            ventas_df: pd.DataFrame,
@@ -629,8 +675,10 @@ class TrendChartGenerator:
                     else:
                         proy_bob = 0
 
-                    # Si es Oruro o Trinidad Y proy_bob = 0, usar SOP distribuido
-                    if ciudad in ['ORURO', 'TRINIDAD'] and proy_bob == 0 and sop_oruro_trinidad_df is not None:
+                    # Si es ciudad sin gerente Y proy_bob = 0, usar SOP distribuido
+                    # 2025 y antes: Oruro y Trinidad | 2026+: Solo Trinidad
+                    ciudades_sin_gerente = ['TRINIDAD'] if self.current_year >= 2026 else ['ORURO', 'TRINIDAD']
+                    if ciudad in ciudades_sin_gerente and proy_bob == 0 and sop_oruro_trinidad_df is not None:
                         try:
                             sop_ciudad = sop_oruro_trinidad_df[
                                 sop_oruro_trinidad_df['ciudad'].str.upper() == ciudad

@@ -24,8 +24,24 @@ class BusinessDaysCalculator:
             (25, 12), # Navidad
         ]
 
-        # Festivos móviles se agregarían aquí según el año
-        # (Carnaval, Viernes Santo, Corpus Christi, etc.)
+        # Festivos móviles por año (mes, día)
+        # Estos cambian cada año según la fecha de Pascua
+        self.mobile_holidays = {
+            2025: [
+                (3, 3),   # Carnaval Lunes - 3 Marzo
+                (3, 4),   # Carnaval Martes - 4 Marzo
+                (4, 18),  # Viernes Santo - 18 Abril
+                (6, 19),  # Corpus Christi - 19 Junio
+            ],
+            2026: [
+                (2, 16),  # Carnaval Lunes - 16 Febrero
+                (2, 17),  # Carnaval Martes - 17 Febrero
+                (4, 3),   # Viernes Santo - 3 Abril
+                (6, 4),   # Corpus Christi - 4 Junio
+            ],
+            # Para agregar años futuros, simplemente añadir:
+            # 2027: [(mes, día), ...],
+        }
 
     def get_holidays_for_year(self, year: int) -> List[datetime]:
         """
@@ -48,15 +64,13 @@ class BusinessDaysCalculator:
                 # En caso de fecha inválida
                 continue
 
-        # Agregar festivos móviles para 2025
-        if year == 2025:
-            # Carnaval (3-4 de marzo 2025)
-            holidays.append(datetime(2025, 3, 3))
-            holidays.append(datetime(2025, 3, 4))
-            # Viernes Santo (18 de abril 2025)
-            holidays.append(datetime(2025, 4, 18))
-            # Corpus Christi (19 de junio 2025)
-            holidays.append(datetime(2025, 6, 19))
+        # Agregar festivos móviles del año desde el diccionario
+        if year in self.mobile_holidays:
+            for month, day in self.mobile_holidays[year]:
+                try:
+                    holidays.append(datetime(year, month, day))
+                except ValueError:
+                    continue
 
         return holidays
 

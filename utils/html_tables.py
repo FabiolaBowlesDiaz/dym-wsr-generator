@@ -21,6 +21,7 @@ class HTMLTableGenerator:
         self.gen = html_generator
         self.current_year = html_generator.current_year
         self.current_day = html_generator.current_day
+        self.current_week = html_generator.current_week
         self.previous_year = html_generator.previous_year
     
     def generate_marca_tables(self, df: pd.DataFrame, estructura_jerarquica: dict = None) -> str:
@@ -50,23 +51,23 @@ class HTMLTableGenerator:
     def generate_marca_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por marca en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Marca</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>Proyección de Cierre 2025 (BOB)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
-                    <th>IngNeto/C9L 2024</th>
-                    <th>IngNeto/C9L 2025</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>Proyección de Cierre {self.current_year} (BOB)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
+                    <th>IngNeto/C9L {self.previous_year}</th>
+                    <th>IngNeto/C9L {self.current_year}</th>
                     <th>%Inc/Dec Precio</th>
                     <th>Stock (C9L)</th>
                     <th>Cobertura (días)</th>
@@ -175,7 +176,7 @@ class HTMLTableGenerator:
     def generate_marca_performance_bob_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por marca con drill-down por subfamilia"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - BOB (Con desglose por Subfamilia)</h3>
         <div class="table-container">
         <table id="tabla-performance-marca">
@@ -183,17 +184,17 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Marca / Subfamilia</th>
-                    <th>Vendido 2024</th>
+                    <th>Vendido {self.previous_year}</th>
                     <th>Ppto General</th>
                     <th>SOP</th>
-                    <th>Avance 2025</th>
-                    <th>Proyección de Cierre 2025</th>
+                    <th>Avance {self.current_year}</th>
+                    <th>Proyección de Cierre {self.current_year}</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
-                    <th>IngNeto/C9L 2024</th>
-                    <th>IngNeto/C9L 2025</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
+                    <th>IngNeto/C9L {self.previous_year}</th>
+                    <th>IngNeto/C9L {self.current_year}</th>
                     <th>%Inc Precio</th>
                     <th>Stock C9L</th>
                     <th>Cobertura</th>
@@ -325,6 +326,7 @@ class HTMLTableGenerator:
         total_stock = df_marca['stock_c9l'].sum() if 'stock_c9l' in df_marca.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
@@ -341,6 +343,13 @@ class HTMLTableGenerator:
         total_venta_diaria = df_marca['venta_promedio_diaria_c9l'].sum() if 'venta_promedio_diaria_c9l' in df_marca.columns else 0
         cobertura_total = (total_stock / total_venta_diaria) if total_venta_diaria > 0 else 0
 
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
+        inc_precio_total_class = self._get_kpi_class(inc_precio_total)
+
         html += f"""
                 <tr class="total-row">
                     <td></td>
@@ -350,12 +359,13 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(precio_total_24)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(precio_total_25)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(inc_precio_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {inc_precio_total_class}"><strong>{self.gen.format_number(inc_precio_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_stock, 0)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(cobertura_total, 0)}</strong></td>
                 </tr>
@@ -415,7 +425,7 @@ class HTMLTableGenerator:
     def generate_marca_performance_c9l_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por marca en C9L con drill-down por subfamilia"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - Unidades C9L (Con desglose por Subfamilia)</h3>
         <div class="table-container">
         <table id="tabla-performance-marca-c9l">
@@ -423,15 +433,15 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Marca / Subfamilia</th>
-                    <th>Vendido 2024</th>
+                    <th>Vendido {self.previous_year}</th>
                     <th>Ppto General</th>
                     <th>SOP</th>
-                    <th>Avance 2025</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year}</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                     <th>Stock C9L</th>
                     <th>Cobertura</th>
                 </tr>
@@ -575,6 +585,7 @@ class HTMLTableGenerator:
         total_stock = df_marca['stock_c9l'].sum() if 'stock_c9l' in df_marca.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
@@ -582,6 +593,12 @@ class HTMLTableGenerator:
         # Cobertura promedio
         total_venta_diaria = df_marca['venta_promedio_diaria_c9l'].sum() if 'venta_promedio_diaria_c9l' in df_marca.columns else 0
         cobertura_total = (total_stock / total_venta_diaria) if total_venta_diaria > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -592,9 +609,10 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_stock, 0)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(cobertura_total, 0)}</strong></td>
                 </tr>
@@ -643,43 +661,43 @@ class HTMLTableGenerator:
             <tbody>
         """
         
-        # Procesar cada marca
+        # Procesar cada marca - usar semana calendario actual
         for idx, row in df.iterrows():
-            s1 = row.get('semana1_bob', 0)
-            s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s1 = row.get('semana1_bob', 0) if self.current_week >= 1 else 0
+            s2 = row.get('semana2_bob', 0) if self.current_week >= 2 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
-            
+
             html += f"""
                 <tr>
                     <td>{row['marcadir']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
-        
-        # Totales
-        total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+
+        # Totales - usar semana calendario actual
+        total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns and self.current_week >= 1 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
-        
+
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -691,21 +709,21 @@ class HTMLTableGenerator:
     def generate_marca_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por marca en C9L"""
         
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR MARCA - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Marca</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>PY 2025 (C9L)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>PY {self.current_year} (C9L)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                     <th>Stock (C9L)</th>
                     <th>Cobertura (días)</th>
                 </tr>
@@ -837,39 +855,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
             
             html += f"""
                 <tr>
                     <td>{row['marcadir']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
         
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
         
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -895,21 +913,21 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por ciudad en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Ciudad</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>PY 2025 (BOB)</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>PY {self.current_year} (BOB)</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -986,7 +1004,7 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_bob_drilldown(self, estructura: dict) -> str:
         """Generar tabla de performance por ciudad con drill-down por marca directorio"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - BOB (Con desglose por Marca Directorio)</h3>
         <div class="table-container">
         <table id="tabla-performance-ciudad">
@@ -994,15 +1012,15 @@ class HTMLTableGenerator:
                 <tr>
                     <th style="width: 30px;"></th>
                     <th>Ciudad / Marca</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>Proyección de Cierre 2025 (BOB)</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>Proyección de Cierre {self.current_year} (BOB)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1110,9 +1128,16 @@ class HTMLTableGenerator:
         total_py = df_ciudad[py_col].sum() if py_col in df_ciudad.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1123,9 +1148,10 @@ class HTMLTableGenerator:
                     <td class="text-right"><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td class="text-right"><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td class="text-right"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="text-right {py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1213,39 +1239,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_bob', 0)
             s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['ciudad']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1258,22 +1284,22 @@ class HTMLTableGenerator:
     def generate_ciudad_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por ciudad en C9L"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CIUDAD - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Ciudad</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1325,9 +1351,16 @@ class HTMLTableGenerator:
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
         total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1337,10 +1370,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
-                    <td><strong>-</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1373,39 +1406,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['ciudad']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1420,22 +1453,22 @@ class HTMLTableGenerator:
     def generate_canal_performance_bob(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por canal en BOB"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CANAL - BOB</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Canal</th>
-                    <th>Vendido 2024 (BOB)</th>
+                    <th>Vendido {self.previous_year} (BOB)</th>
                     <th>Ppto General (BOB)</th>
                     <th>SOP (BOB)</th>
-                    <th>Avance 2025 (BOB)</th>
-                    <th>PY 2025 (BOB)</th>
+                    <th>Avance {self.current_year} (BOB)</th>
+                    <th>PY {self.current_year} (BOB)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1487,9 +1520,16 @@ class HTMLTableGenerator:
         total_py = df[py_col].sum() if py_col in df.columns else 0
 
         # KPIs totales
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1499,9 +1539,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1535,39 +1576,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_bob', 0)
             s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['canal']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1580,22 +1621,22 @@ class HTMLTableGenerator:
     def generate_canal_performance_c9l(self, df: pd.DataFrame) -> str:
         """Generar tabla de performance por canal en C9L"""
 
-        html = """
+        html = f"""
         <h3>PERFORMANCE POR CANAL - Unidades C9L</h3>
         <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>Canal</th>
-                    <th>Vendido 2024 (C9L)</th>
+                    <th>Vendido {self.previous_year} (C9L)</th>
                     <th>Ppto General (C9L)</th>
                     <th>SOP (C9L)</th>
-                    <th>Avance 2025 (C9L)</th>
-                    <th>Proyección Cierre 2025 (C9L)</th>
+                    <th>Avance {self.current_year} (C9L)</th>
+                    <th>Proyección Cierre {self.current_year} (C9L)</th>
                     <th>PY/SOP</th>
-                    <th>AV25/PG</th>
-                    <th>AV25/SOP</th>
-                    <th>PY25/V24</th>
+                    <th>AV{str(self.current_year)[2:]}/PG</th>
+                    <th>AV{str(self.current_year)[2:]}/SOP</th>
+                    <th>PY{str(self.current_year)[2:]}/V{str(self.previous_year)[2:]}</th>
                 </tr>
             </thead>
             <tbody>
@@ -1646,9 +1687,16 @@ class HTMLTableGenerator:
         total_avance = df[avance_col].sum() if avance_col in df.columns else 0
         total_py = df[py_col].sum() if py_col in df.columns else 0  # Sumar proyección calculada
 
+        py_sop_total = ((total_py / total_sop) - 1) if total_sop > 0 else 0
         av_pg_total = ((total_avance / total_ppto) - 1) if total_ppto > 0 else 0
         av_sop_total = ((total_avance / total_sop) - 1) if total_sop > 0 else 0
         py_v_total = ((total_py / total_vendido) - 1) if total_vendido > 0 else 0
+
+        # Clases CSS para KPIs totales
+        py_sop_total_class = self._get_kpi_class(py_sop_total)
+        av_pg_total_class = self._get_kpi_class(av_pg_total)
+        av_sop_total_class = self._get_kpi_class(av_sop_total)
+        py_v_total_class = self._get_kpi_class(py_v_total)
 
         html += f"""
                 <tr class="total-row">
@@ -1658,9 +1706,10 @@ class HTMLTableGenerator:
                     <td><strong>{self.gen.format_number(total_sop)}</strong></td>
                     <td><strong>{self.gen.format_number(total_avance)}</strong></td>
                     <td><strong>{self.gen.format_number(total_py)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
-                    <td><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
+                    <td class="{py_sop_total_class}"><strong>{self.gen.format_number(py_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{av_pg_total_class}"><strong>{self.gen.format_number(av_pg_total, is_percentage=True)}</strong></td>
+                    <td class="{av_sop_total_class}"><strong>{self.gen.format_number(av_sop_total, is_percentage=True)}</strong></td>
+                    <td class="{py_v_total_class}"><strong>{self.gen.format_number(py_v_total, is_percentage=True)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -1693,39 +1742,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['canal']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
