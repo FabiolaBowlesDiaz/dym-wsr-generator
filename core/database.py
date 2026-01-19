@@ -30,6 +30,22 @@ class DatabaseManager:
         self.conn = None
         self.tipo_cambio = 6.96  # BOB/USD
 
+    def _get_ciudades_sin_gerente(self, year: int) -> tuple:
+        """
+        Retorna tupla de ciudades sin gerente segun el ano.
+        - 2025 y anteriores: Oruro y Trinidad usan SOP
+        - 2026 en adelante: Solo Trinidad usa SOP (Oruro ya tiene gerente)
+        """
+        if year >= 2026:
+            return ('TRINIDAD',)
+        else:
+            return ('ORURO', 'TRINIDAD')
+
+    def _get_ciudades_sin_gerente_sql(self, year: int) -> str:
+        """Retorna string SQL para usar en clausula IN"""
+        ciudades = self._get_ciudades_sin_gerente(year)
+        return ", ".join([f"'{c}'" for c in ciudades])
+
     def get_calendar_week_ranges(self, year: int, month: int) -> List[Tuple[int, int]]:
         """
         Calcula los rangos de días para cada semana CALENDARIO del mes.
@@ -333,10 +349,10 @@ class DatabaseManager:
                 ON ct.marcadir = pg.marcadir AND ct.ciudad = pg.ciudad
             LEFT JOIN ventas_reales_semanales vr
                 ON ct.marcadir = vr.marcadir AND ct.ciudad = vr.ciudad
-            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
+            WHERE ct.ciudad NOT IN ({self._get_ciudades_sin_gerente_sql(year)})
         ),
         sop_ciudades_sin_gerente_base AS (
-            -- Obtener SOP COMPLETO de Oruro y Trinidad (no prorrateado)
+            -- Obtener SOP COMPLETO de ciudades sin gerente (no prorrateado)
             SELECT
                 UPPER(marcadirectorio) as marcadir,
                 UPPER(ciudad) as ciudad,
@@ -344,15 +360,15 @@ class DatabaseManager:
             FROM {self.schema}.factpresupuesto_mensual
             WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
                 AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
-                AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+                AND UPPER(ciudad) IN ({self._get_ciudades_sin_gerente_sql(year)})
                 AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
             GROUP BY UPPER(marcadirectorio), UPPER(ciudad)
         ),
         oruro_trinidad_todas AS (
-            -- Obtener todas las marcas con ventas reales O SOP en Oruro/Trinidad
+            -- Obtener todas las marcas con ventas reales O SOP en ciudades sin gerente
             SELECT DISTINCT marcadir, ciudad
             FROM ventas_reales_semanales
-            WHERE ciudad IN ('ORURO', 'TRINIDAD')
+            WHERE ciudad IN ({self._get_ciudades_sin_gerente_sql(year)})
             UNION
             SELECT DISTINCT marcadir, ciudad
             FROM sop_ciudades_sin_gerente_base
@@ -555,8 +571,10 @@ class DatabaseManager:
 
     def get_sop_oruro_trinidad(self, year: int, month: int) -> pd.DataFrame:
         """
-        Obtener presupuesto mensual (SOP) de Oruro y Trinidad
-        Para distribuir semanalmente en el gráfico de tendencia
+        Obtener presupuesto mensual (SOP) de ciudades sin gerente
+        Para distribuir semanalmente en el grafico de tendencia
+        - 2025 y anteriores: Oruro y Trinidad
+        - 2026 en adelante: Solo Trinidad (Oruro ya tiene gerente)
         """
         query = f"""
         SELECT
@@ -565,7 +583,7 @@ class DatabaseManager:
         FROM {self.schema}.factpresupuesto_mensual
         WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
             AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
-            AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+            AND UPPER(ciudad) IN ({self._get_ciudades_sin_gerente_sql(year)})
             AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
         GROUP BY ciudad
         ORDER BY ciudad
@@ -807,19 +825,19 @@ class DatabaseManager:
                 AND UPPER(ciudad) != 'TURISMO'
             GROUP BY UPPER(ciudad)
         ),
-        sop_oruro_trinidad AS (
-            -- SOP total para Oruro y Trinidad
+        sop_ciudades_sin_gerente AS (
+            -- SOP total para ciudades sin gerente
             SELECT
                 UPPER(ciudad) as ciudad,
                 SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_total_mes
             FROM {self.schema}.factpresupuesto_mensual
             WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
                 AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
-                AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+                AND UPPER(ciudad) IN ({self._get_ciudades_sin_gerente_sql(year)})
             GROUP BY UPPER(ciudad)
         ),
         ciudades_con_gerente AS (
-            -- Proyección híbrida para ciudades CON gerente
+            -- Proyeccion hibrida para ciudades CON gerente
             SELECT
                 pg.ciudad,
                 CASE
@@ -841,7 +859,7 @@ class DatabaseManager:
                 END as total_bob
             FROM proyecciones_gerentes_base pg
             LEFT JOIN ventas_reales_semanales vr ON pg.ciudad = vr.ciudad
-            WHERE pg.ciudad NOT IN ('ORURO', 'TRINIDAD')
+            WHERE pg.ciudad NOT IN ({self._get_ciudades_sin_gerente_sql(year)})
         ),
         ciudades_sin_gerente AS (
             -- Proyección híbrida para Oruro y Trinidad (SOP ponderado)
@@ -871,7 +889,7 @@ class DatabaseManager:
                         CASE WHEN sop.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.32, 0)
                              ELSE COALESCE(sop.sop_total_mes * 0.15, 0) END
                 END as total_bob
-            FROM sop_oruro_trinidad sop
+            FROM sop_ciudades_sin_gerente sop
             LEFT JOIN ventas_reales_semanales vr ON sop.ciudad = vr.ciudad
         )
         SELECT ciudad, total_bob as py_{year}_bob
@@ -997,10 +1015,10 @@ class DatabaseManager:
                 ON ct.marcadir = pg.marcadir AND ct.ciudad = pg.ciudad
             LEFT JOIN ventas_reales_semanales vr
                 ON ct.marcadir = vr.marcadir AND ct.ciudad = vr.ciudad
-            WHERE ct.ciudad NOT IN ('ORURO', 'TRINIDAD')
+            WHERE ct.ciudad NOT IN ({self._get_ciudades_sin_gerente_sql(year)})
         ),
         sop_ciudades_sin_gerente_base AS (
-            -- Obtener SOP de Oruro y Trinidad (NORMALIZADO A MAYÚSCULAS)
+            -- Obtener SOP de ciudades sin gerente (NORMALIZADO A MAYUSCULAS)
             SELECT
                 UPPER(marcadirectorio) as marcadir,
                 UPPER(ciudad) as ciudad,
@@ -1008,15 +1026,15 @@ class DatabaseManager:
             FROM {self.schema}.factpresupuesto_mensual
             WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
                 AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
-                AND UPPER(ciudad) IN ('ORURO', 'TRINIDAD')
+                AND UPPER(ciudad) IN ({self._get_ciudades_sin_gerente_sql(year)})
                 AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
             GROUP BY UPPER(marcadirectorio), UPPER(ciudad)
         ),
-        oruro_trinidad_todas AS (
-            -- Obtener todas las marcas con ventas reales O SOP en Oruro/Trinidad
+        ciudades_sin_gerente_todas AS (
+            -- Obtener todas las marcas con ventas reales O SOP en ciudades sin gerente
             SELECT DISTINCT marcadir, ciudad
             FROM ventas_reales_semanales
-            WHERE ciudad IN ('ORURO', 'TRINIDAD')
+            WHERE ciudad IN ({self._get_ciudades_sin_gerente_sql(year)})
             UNION
             SELECT DISTINCT marcadir, ciudad
             FROM sop_ciudades_sin_gerente_base
@@ -1059,7 +1077,7 @@ class DatabaseManager:
                         CASE WHEN ot.ciudad = 'ORURO' THEN COALESCE(sop.sop_total_mes * 0.32, 0)
                              ELSE COALESCE(sop.sop_total_mes * 0.15, 0) END
                 END as total_bob
-            FROM oruro_trinidad_todas ot
+            FROM ciudades_sin_gerente_todas ot
             LEFT JOIN sop_ciudades_sin_gerente_base sop
                 ON ot.marcadir = sop.marcadir AND ot.ciudad = sop.ciudad
             LEFT JOIN ventas_reales_semanales vr
@@ -1727,7 +1745,12 @@ class DatabaseManager:
         return self.execute_query(query)
 
     def get_proyecciones_semanales_por_ciudad(self, year: int, month: int) -> pd.DataFrame:
-        """Obtener proyecciones semanales desglosadas por ciudad (excluyendo Oruro y Trinidad)"""
+        """
+        Obtener proyecciones semanales desglosadas por ciudad
+        Excluye ciudades sin gerente (dinamico por ano) y Turismo
+        - 2025 y antes: Excluye Oruro y Trinidad
+        - 2026 en adelante: Solo excluye Trinidad (Oruro ya tiene gerente)
+        """
         query = f"""
         SELECT
             ciudad,
@@ -1754,7 +1777,7 @@ class DatabaseManager:
         FROM {self.schema}.fact_proyecciones
         WHERE anio_proyeccion = {year}
             AND mes_proyeccion = {month}
-            AND UPPER(ciudad) NOT IN ('TURISMO', 'ORURO', 'TRINIDAD')
+            AND UPPER(ciudad) NOT IN ('TURISMO', {self._get_ciudades_sin_gerente_sql(year)})
         GROUP BY ciudad
         ORDER BY ciudad
         """

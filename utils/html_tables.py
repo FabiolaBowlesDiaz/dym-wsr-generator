@@ -21,6 +21,7 @@ class HTMLTableGenerator:
         self.gen = html_generator
         self.current_year = html_generator.current_year
         self.current_day = html_generator.current_day
+        self.current_week = html_generator.current_week
         self.previous_year = html_generator.previous_year
     
     def generate_marca_tables(self, df: pd.DataFrame, estructura_jerarquica: dict = None) -> str:
@@ -660,43 +661,43 @@ class HTMLTableGenerator:
             <tbody>
         """
         
-        # Procesar cada marca
+        # Procesar cada marca - usar semana calendario actual
         for idx, row in df.iterrows():
-            s1 = row.get('semana1_bob', 0)
-            s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s1 = row.get('semana1_bob', 0) if self.current_week >= 1 else 0
+            s2 = row.get('semana2_bob', 0) if self.current_week >= 2 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
-            
+
             html += f"""
                 <tr>
                     <td>{row['marcadir']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
-        
-        # Totales
-        total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+
+        # Totales - usar semana calendario actual
+        total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns and self.current_week >= 1 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
-        
+
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -854,39 +855,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
             
             html += f"""
                 <tr>
                     <td>{row['marcadir']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
         
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
         
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1238,39 +1239,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_bob', 0)
             s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['ciudad']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1405,39 +1406,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['ciudad']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1575,39 +1576,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_bob', 0)
             s2 = row.get('semana2_bob', 0)
-            s3 = row.get('semana3_bob', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_bob', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_bob', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_bob', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_bob', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_bob', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['canal']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_bob'].sum() if 'semana1_bob' in df.columns else 0
-        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_bob'].sum() if 'semana2_bob' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_bob'].sum() if 'semana3_bob' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_bob'].sum() if 'semana4_bob' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_bob'].sum() if 'semana5_bob' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
@@ -1741,39 +1742,39 @@ class HTMLTableGenerator:
         for idx, row in df.iterrows():
             s1 = row.get('semana1_c9l', 0)
             s2 = row.get('semana2_c9l', 0)
-            s3 = row.get('semana3_c9l', 0) if self.current_day > 14 else 0
-            s4 = row.get('semana4_c9l', 0) if self.current_day > 21 else 0
-            s5 = row.get('semana5_c9l', 0) if self.current_day > 28 else 0
+            s3 = row.get('semana3_c9l', 0) if self.current_week >= 3 else 0
+            s4 = row.get('semana4_c9l', 0) if self.current_week >= 4 else 0
+            s5 = row.get('semana5_c9l', 0) if self.current_week >= 5 else 0
             total = s1 + s2 + s3 + s4 + s5
 
             html += f"""
                 <tr>
                     <td>{row['canal']}</td>
                     <td>{self.gen.format_number(s1)}</td>
-                    <td>{self.gen.format_number(s2) if self.current_day > 7 else ''}</td>
-                    <td>{self.gen.format_number(s3) if self.current_day > 14 else ''}</td>
-                    <td>{self.gen.format_number(s4) if self.current_day > 21 else ''}</td>
-                    <td>{self.gen.format_number(s5) if self.current_day > 28 else ''}</td>
+                    <td>{self.gen.format_number(s2) if self.current_week >= 2 else ''}</td>
+                    <td>{self.gen.format_number(s3) if self.current_week >= 3 else ''}</td>
+                    <td>{self.gen.format_number(s4) if self.current_week >= 4 else ''}</td>
+                    <td>{self.gen.format_number(s5) if self.current_week >= 5 else ''}</td>
                     <td>{self.gen.format_number(total)}</td>
                 </tr>
             """
 
         # Totales
         total_s1 = df['semana1_c9l'].sum() if 'semana1_c9l' in df.columns else 0
-        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_day > 7 else 0
-        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_day > 14 else 0
-        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_day > 21 else 0
-        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_day > 28 else 0
+        total_s2 = df['semana2_c9l'].sum() if 'semana2_c9l' in df.columns and self.current_week >= 2 else 0
+        total_s3 = df['semana3_c9l'].sum() if 'semana3_c9l' in df.columns and self.current_week >= 3 else 0
+        total_s4 = df['semana4_c9l'].sum() if 'semana4_c9l' in df.columns and self.current_week >= 4 else 0
+        total_s5 = df['semana5_c9l'].sum() if 'semana5_c9l' in df.columns and self.current_week >= 5 else 0
         total_total = total_s1 + total_s2 + total_s3 + total_s4 + total_s5
 
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
                     <td><strong>{self.gen.format_number(total_s1)}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s2) if self.current_day > 7 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s3) if self.current_day > 14 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s4) if self.current_day > 21 else ''}</strong></td>
-                    <td><strong>{self.gen.format_number(total_s5) if self.current_day > 28 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s2) if self.current_week >= 2 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s3) if self.current_week >= 3 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s4) if self.current_week >= 4 else ''}</strong></td>
+                    <td><strong>{self.gen.format_number(total_s5) if self.current_week >= 5 else ''}</strong></td>
                     <td><strong>{self.gen.format_number(total_total)}</strong></td>
                 </tr>
             </tbody>
