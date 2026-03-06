@@ -21,3 +21,7 @@ colorlog>=6.6.0
 
 # Data validation
 pydantic>=1.10.0
+
+# Proyección Objetiva (motor estadístico Holt-Winters)
+statsmodels>=0.14.0
+scipy>=1.10.0

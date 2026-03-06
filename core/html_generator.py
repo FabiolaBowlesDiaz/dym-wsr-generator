@@ -220,22 +220,39 @@ class HTMLGenerator:
                                 summary_data: Dict,
                                 comentarios_analysis: str,
                                 hitrate_data: Dict = None,
-                                trend_chart_html: str = "") -> str:
+                                trend_chart_html: str = "",
+                                projection_html: str = "") -> str:
         """
         Generar el reporte HTML completo
-        
+
         Args:
             marcas_df: DataFrame consolidado de marcas
             ciudades_df: DataFrame consolidado de ciudades
             canales_df: DataFrame consolidado de canales
             summary_data: Datos del resumen ejecutivo
             comentarios_analysis: Análisis de comentarios de gerentes
-            
+            hitrate_data: Datos de Hit Rate procesados
+            trend_chart_html: HTML del gráfico de tendencia
+            projection_html: HTML de la sección de Proyección Objetiva (nuevo)
+
         Returns:
             String con el HTML completo del reporte
         """
         mes_nombre = self.meses[self.current_month]
-        
+
+        # CSS adicional para proyección objetiva
+        projection_css = ""
+        try:
+            from proyeccion_objetiva.visualizacion.projection_html_generator import get_projection_css
+            projection_css = get_projection_css()
+        except ImportError:
+            pass
+
+        # Determinar numeración de secciones según si hay proyección
+        has_projection = bool(projection_html)
+        stock_num = "5" if has_projection else "4"
+        hitrate_num = "6" if has_projection else "5"
+
         html = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -244,29 +261,31 @@ class HTMLGenerator:
     <title>Weekly Sales Report - DYM - {mes_nombre} {self.current_year}</title>
     <style>
         {self._get_css_styles()}
+        {projection_css}
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>WEEKLY SALES REPORT - DYM</h1>
-        <p style="text-align: center; color: #666; font-size: 0.9em; margin-top: -10px;">Versión 2.0</p>
+        <p style="text-align: center; color: #666; font-size: 0.9em; margin-top: -10px;">Versión 3.0</p>
         <h2>Período: Semana {self.current_week} de {mes_nombre} {self.current_year}</h2>
         <h3>Fecha de generación: {self.current_date.strftime('%d/%m/%Y')}</h3>
-        
+
         <hr>
-        
+
         {self._generate_resumen_ejecutivo(summary_data, comentarios_analysis)}
-        
+
         <div class="section">
             <h2>1. PERFORMANCE POR MARCA</h2>
             {self._generate_marca_tables(marcas_df)}
         </div>
-        
+
         <div class="section">
             <h2>2. PERFORMANCE POR CIUDAD</h2>
             {self._generate_ciudad_tables(ciudades_df)}
         </div>
-        
+
         <div class="section">
             <h2>3. PERFORMANCE POR CANAL</h2>
             {self._generate_canal_tables(canales_df)}
@@ -274,13 +293,15 @@ class HTMLGenerator:
 
         {trend_chart_html}
 
+        {projection_html}
+
         <div class="section">
-            <h2>4. ANÁLISIS DE STOCK Y COBERTURA</h2>
+            <h2>{stock_num}. ANÁLISIS DE STOCK Y COBERTURA</h2>
             {self._generate_stock_analysis(marcas_df)}
         </div>
 
         <div class="section">
-            <h2>5. HIT RATE Y EFICIENCIA</h2>
+            <h2>{hitrate_num}. HIT RATE Y EFICIENCIA</h2>
             {self._generate_hitrate_section(hitrate_data) if hitrate_data else '<p>No hay datos de Hit Rate disponibles</p>'}
         </div>
 
@@ -288,7 +309,7 @@ class HTMLGenerator:
     </div>
 </body>
 </html>"""
-        
+
         return html
     
     def _get_css_styles(self) -> str:

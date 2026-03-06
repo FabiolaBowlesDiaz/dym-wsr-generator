@@ -27,6 +27,12 @@ class BusinessDaysCalculator:
         # Festivos móviles por año (mes, día)
         # Estos cambian cada año según la fecha de Pascua
         self.mobile_holidays = {
+            2024: [
+                (2, 12),  # Carnaval Lunes - 12 Febrero
+                (2, 13),  # Carnaval Martes - 13 Febrero
+                (3, 29),  # Viernes Santo - 29 Marzo
+                (5, 30),  # Corpus Christi - 30 Mayo
+            ],
             2025: [
                 (3, 3),   # Carnaval Lunes - 3 Marzo
                 (3, 4),   # Carnaval Martes - 4 Marzo

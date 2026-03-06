@@ -89,10 +89,16 @@ class DataProcessor:
         # Calcular KPIs
         df = self._calculate_marca_kpis(df)
 
-        # Ordenar por avance descendente
+        # Ordenar por volumen descendente (con fallback para inicio de mes)
+        sort_cols = []
         avance_col = f'avance_{self.current_year}_bob'
-        if avance_col in df.columns:
-            df = df.sort_values(avance_col, ascending=False)
+        py_col = f'py_{self.current_year}_bob'
+        vendido_col = f'vendido_{self.previous_year}_bob'
+        for col in [avance_col, py_col, vendido_col]:
+            if col in df.columns:
+                sort_cols.append(col)
+        if sort_cols:
+            df = df.sort_values(sort_cols, ascending=False)
 
         logger.info(f"Consolidación completa: {len(df)} marcas procesadas")
         return df
@@ -302,10 +308,16 @@ class DataProcessor:
         # Calcular KPIs
         df = self._calculate_ciudad_kpis(df)
         
-        # Ordenar por avance descendente
+        # Ordenar por volumen descendente (con fallback para inicio de mes)
+        sort_cols = []
         avance_col = f'avance_{self.current_year}_bob'
-        if avance_col in df.columns:
-            df = df.sort_values(avance_col, ascending=False)
+        py_col = f'py_{self.current_year}_bob'
+        vendido_col = f'vendido_{self.previous_year}_bob'
+        for col in [avance_col, py_col, vendido_col]:
+            if col in df.columns:
+                sort_cols.append(col)
+        if sort_cols:
+            df = df.sort_values(sort_cols, ascending=False)
         
         # Ordenar ciudades en un orden específico si es necesario
         orden_ciudades = ['Santa Cruz', 'Cochabamba', 'La Paz', 'El Alto',
@@ -562,10 +574,16 @@ class DataProcessor:
         # Calcular KPIs
         df = self._calculate_canal_kpis(df)
         
-        # Ordenar por avance descendente
+        # Ordenar por volumen descendente (con fallback para inicio de mes)
+        sort_cols = []
         avance_col = f'avance_{self.current_year}_bob'
-        if avance_col in df.columns:
-            df = df.sort_values(avance_col, ascending=False)
+        py_col = f'py_{self.current_year}_bob'
+        vendido_col = f'vendido_{self.previous_year}_bob'
+        for col in [avance_col, py_col, vendido_col]:
+            if col in df.columns:
+                sort_cols.append(col)
+        if sort_cols:
+            df = df.sort_values(sort_cols, ascending=False)
         
         logger.info(f"Consolidación completa: {len(df)} canales procesados")
         return df

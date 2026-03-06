@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 from dotenv import load_dotenv
 import webbrowser
+import pandas as pd
 
 # Añadir el directorio actual al path
 import sys
@@ -22,6 +23,16 @@ from core.data_processor import DataProcessor
 from core.html_generator import HTMLGenerator
 from core.trend_chart_generator import TrendChartGenerator
 from utils.html_tables import HTMLTableGenerator
+
+# Módulo de Proyección Objetiva (nuevo)
+try:
+    from proyeccion_objetiva import ProjectionProcessor
+    from proyeccion_objetiva.visualizacion.projection_html_generator import ProjectionHTMLGenerator, get_projection_css
+    from proyeccion_objetiva.visualizacion.projection_chart_generator import ProjectionChartGenerator
+    PROJECTION_MODULE_AVAILABLE = True
+except ImportError as e:
+    PROJECTION_MODULE_AVAILABLE = False
+    logging.getLogger(__name__).warning(f"Módulo de Proyección Objetiva no disponible: {e}")
 
 # Cargar variables de entorno
 load_dotenv()
@@ -126,6 +137,94 @@ class WSRGeneratorSystem:
             logger.info("\n📈 Obteniendo datos de Hit Rate y Eficiencia...")
             hitrate_data = self._fetch_hitrate_data()
 
+            # 7.5. Generar Proyecciones Objetivas (nuevo módulo)
+            projection_data = None
+            if PROJECTION_MODULE_AVAILABLE:
+                try:
+                    logger.info("\n📊 Generando proyecciones objetivas (triple pilar)...")
+                    proj_processor = ProjectionProcessor(
+                        self.db_manager, self.current_date, self.schema
+                    )
+                    projection_data = proj_processor.generate_projections(
+                        py_gerente_marca=data['marca'].get('proyecciones'),
+                        py_gerente_ciudad=data['ciudad'].get('proyecciones')
+                    )
+                    logger.info("✅ Proyecciones objetivas generadas exitosamente")
+
+                    # 7.6 Merge PY Estadística en DataFrames existentes
+                    # Nota: WSR usa Title Case (Branca), DWH usa UPPER (BRANCA).
+                    # Se normaliza a UPPER antes del merge y se restaura después.
+                    logger.info("\n🔗 Embebiendo PY Estadística en tablas de performance...")
+                    try:
+                        def _merge_py_est(target_df, source_df, key_cols, value_col='py_estadistica_bob'):
+                            """Merge case-insensitive usando columnas temporales UPPER."""
+                            if source_df.empty or value_col not in source_df.columns:
+                                return target_df
+                            # Crear columnas temporales UPPER para merge
+                            tmp_cols = [f'_tmp_{c}' for c in key_cols]
+                            src = source_df[key_cols + [value_col]].copy()
+                            for c, tc in zip(key_cols, tmp_cols):
+                                src[tc] = src[c].astype(str).str.upper()
+                            src = src[tmp_cols + [value_col]]
+                            # Deduplicar source por keys (promediar si hay duplicados)
+                            src = src.groupby(tmp_cols, as_index=False)[value_col].sum()
+
+                            tgt = target_df.copy()
+                            for c, tc in zip(key_cols, tmp_cols):
+                                tgt[tc] = tgt[c].astype(str).str.upper()
+                            tgt = tgt.merge(src, on=tmp_cols, how='left')
+                            tgt[value_col] = tgt[value_col].fillna(0)
+                            # Eliminar columnas temporales
+                            tgt.drop(columns=tmp_cols, inplace=True)
+                            return tgt
+
+                        # Merge en marca_totales
+                        by_marca = projection_data.get('by_marca', pd.DataFrame())
+                        estructura_marca['marca_totales'] = _merge_py_est(
+                            estructura_marca['marca_totales'], by_marca, ['marcadir']
+                        )
+
+                        # Merge en marca_subfamilia
+                        est_subfam = projection_data.get('est_by_subfamilia', pd.DataFrame())
+                        estructura_marca['marca_subfamilia'] = _merge_py_est(
+                            estructura_marca['marca_subfamilia'], est_subfam, ['marcadir', 'subfamilia']
+                        )
+
+                        # Merge en ciudad_totales
+                        by_ciudad = projection_data.get('by_ciudad', pd.DataFrame())
+                        estructura_ciudad['ciudad_totales'] = _merge_py_est(
+                            estructura_ciudad['ciudad_totales'], by_ciudad, ['ciudad']
+                        )
+
+                        # Merge en ciudad_marca
+                        est_ciudad_marca = projection_data.get('est_by_ciudad_marca', pd.DataFrame())
+                        estructura_ciudad['ciudad_marca'] = _merge_py_est(
+                            estructura_ciudad['ciudad_marca'], est_ciudad_marca, ['ciudad', 'marcadir']
+                        )
+
+                        # Merge en canales_df
+                        est_canal = projection_data.get('est_by_canal', pd.DataFrame())
+                        canales_df = _merge_py_est(canales_df, est_canal, ['canal'])
+
+                        logger.info("✅ PY Estadística embebida en tablas de performance")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error embebiendo PY Estadística (tablas se generan sin esta columna): {e}")
+
+                    # 7.7 Generar narrativa IA de proyecciones
+                    try:
+                        from proyeccion_objetiva.narrative_generator import ProjectionNarrativeGenerator
+                        narr_gen = ProjectionNarrativeGenerator()
+                        projection_data['narrative_html'] = narr_gen.generate_narrative(
+                            projection_data, estructura_marca.get('marca_totales', pd.DataFrame()),
+                            self.current_date
+                        )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Narrativa IA no generada: {e}")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Módulo de Proyección Objetiva falló (WSR se genera sin esta sección): {e}")
+                    projection_data = None
+
             # 8. Generar HTML
             logger.info("\n📄 Generando reporte HTML...")
             html = self._generate_html_report(
@@ -133,7 +232,8 @@ class WSRGeneratorSystem:
                 summary_data, comentarios_analysis, hitrate_data,
                 estructura_marca=estructura_marca,
                 estructura_ciudad=estructura_ciudad,
-                trend_chart_html=trend_chart_html
+                trend_chart_html=trend_chart_html,
+                projection_data=projection_data
             )
 
             # 8. Guardar archivo
@@ -349,17 +449,22 @@ class WSRGeneratorSystem:
 
     def _generate_html_report(self, marcas_df, ciudades_df, canales_df,
                              summary_data, comentarios_analysis, hitrate_data=None,
-                             estructura_marca=None, estructura_ciudad=None, trend_chart_html=""):
+                             estructura_marca=None, estructura_ciudad=None,
+                             trend_chart_html="", projection_data=None):
         """Generar el reporte HTML completo"""
 
         # Extender HTMLGenerator con métodos de tablas
         # Si tenemos estructura jerárquica, pasar a generate_marca_tables
+        narrative_html = projection_data.get('narrative_html', '') if projection_data else ''
+
         if estructura_marca:
             self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(
-                df, estructura_jerarquica=estructura_marca
+                df, estructura_jerarquica=estructura_marca, narrative_html=narrative_html
             )
         else:
-            self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(df)
+            self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(
+                df, narrative_html=narrative_html
+            )
 
         # Si tenemos estructura jerárquica de ciudad, pasar a _generate_ciudad_tables
         if estructura_ciudad:
@@ -372,13 +477,31 @@ class WSRGeneratorSystem:
         self.html_generator._generate_stock_analysis = lambda df: self._generate_stock_analysis(df)
         self.html_generator._generate_footer = lambda: self._generate_footer()
         
+        # Generar sección de Proyección Objetiva (si hay datos)
+        projection_html = ""
+        if projection_data and PROJECTION_MODULE_AVAILABLE:
+            try:
+                proj_html_gen = ProjectionHTMLGenerator(self.html_generator.format_number)
+                proj_chart_gen = ProjectionChartGenerator()
+
+                chart_html = proj_chart_gen.generate_comparison_chart(
+                    projection_data.get('by_marca', pd.DataFrame())
+                )
+                projection_html = proj_html_gen.generate_full_section(
+                    projection_data, chart_html
+                )
+                # Narrativa IA se inyecta en generate_marca_tables (después de tabla BOB)
+            except Exception as e:
+                logger.warning(f"Error generando HTML de proyección objetiva: {e}")
+                projection_html = ""
+
         # Generar HTML completo
         html = self.html_generator.generate_complete_report(
             marcas_df, ciudades_df, canales_df,
             summary_data, comentarios_analysis, hitrate_data,
-            trend_chart_html
+            trend_chart_html, projection_html
         )
-        
+
         return html
     
     def _generate_ciudad_tables(self, df, estructura_jerarquica=None):
