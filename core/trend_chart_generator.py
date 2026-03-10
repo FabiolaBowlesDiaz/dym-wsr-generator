@@ -288,6 +288,15 @@ class TrendChartGenerator:
         Returns:
             String con HTML del gráfico
         """
+        # Check config flag for accuracy section visibility
+        try:
+            from proyeccion_objetiva.config import SHOW_ACCURACY_SECTION
+        except ImportError:
+            SHOW_ACCURACY_SECTION = True  # Default to showing if config unavailable
+
+        if not SHOW_ACCURACY_SECTION:
+            return ""
+
         # Detectar si es multi-ciudad o simple
         is_multi_city = 'general' in data
 

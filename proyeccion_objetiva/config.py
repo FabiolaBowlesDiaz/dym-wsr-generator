@@ -7,6 +7,7 @@ TABLE_VENTAS_HISTORICO = "td_ventas_bob_historico"
 TABLE_FACT_VENTAS = "FactVentas"
 TABLE_HITRATE = "fact_eficiencia_hitrate"
 TABLE_PROYECCIONES = "fact_proyecciones"
+TABLE_PRESUPUESTO_MENSUAL = "factpresupuesto_mensual"
 
 # === FILTROS ESTÁNDAR (consistentes con el WSR existente) ===
 EXCLUDED_CITIES = ("TURISMO",)
@@ -48,6 +49,9 @@ SANITY_MAX_FACTOR = 2.00  # Máximo 200% del año anterior
 COLOR_PY_GERENTE = "#94A3B8"      # Gris azulado
 COLOR_PY_ESTADISTICA = "#3B82F6"  # Azul
 COLOR_PY_OPERATIVA = "#10B981"    # Verde
+COLOR_PY_SISTEMA = "#10B981"      # Verde (PY Sistema = Nowcast)
+COLOR_SOP = "#9CA3AF"             # Gris (presupuesto)
+COLOR_VENTA_REAL = "#1E3A8A"      # Azul oscuro (venta real histórica)
 COLOR_TREND_UP = "#059669"        # Verde oscuro
 COLOR_TREND_DOWN = "#DC2626"      # Rojo
 COLOR_CONSENSUS_HIGH = "#ECFDF5"  # Verde claro (fondo)
@@ -78,3 +82,6 @@ TRAINING_YEARS_LOOKBACK = 2  # Mirar últimos 2 años para determinar patrón
 
 # === TIPO DE CAMBIO ===
 TIPO_CAMBIO = 6.96  # BOB/USD (consistente con WSR)
+
+# === VISIBILIDAD DE SECCIONES ===
+SHOW_ACCURACY_SECTION = False  # Set to True to show "Accuracy de la proyeccion comercial" in the WSR
