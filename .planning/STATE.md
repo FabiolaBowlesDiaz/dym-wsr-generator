@@ -64,6 +64,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Scale existing weekly distribution proportionally to marca_totales total rather than replacing it
 - [Phase 02]: Config flag pattern for section visibility (early return + try/except ImportError)
 
+### Roadmap Evolution
+
+- Phase 3 added: Driver Data Verification — validate cobertura, frecuencia and dropsize in drivers performance table
+
 ### Pending Todos
 
 None yet.

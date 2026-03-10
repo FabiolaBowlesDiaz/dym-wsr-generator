@@ -10,8 +10,9 @@ Fix data integrity issues in the Section 4 chart (PY Gerente and SOP values dive
 - Integer phases (1, 2): Planned milestone work
 - Decimal phases (1.1, etc.): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Data Integrity** - Chart Section 4 matches summary table for PY Gerente and SOP (source: marca_totales)
-- [ ] **Phase 2: Narrative and Visibility** - Regional comments render as HTML, terminology is commercial-friendly, accuracy section hidden
+- [x] **Phase 1: Data Integrity** - Chart Section 4 matches summary table for PY Gerente and SOP (source: marca_totales)
+- [x] **Phase 2: Narrative and Visibility** - Regional comments render as HTML, terminology is commercial-friendly, accuracy section hidden
+- [ ] **Phase 3: Driver Data Verification** - Validate cobertura, frecuencia and dropsize calculations in drivers performance table
 
 ## Phase Details
 
@@ -42,12 +43,27 @@ Plans:
 Plans:
 - [ ] 02-01-PLAN.md -- Fix bold rendering, add terminology rules to LLM prompts, hide accuracy section via config flag
 
+### Phase 3: Driver Data Verification
+**Goal**: Cobertura, frecuencia and drop size values in the Drivers de Performance por Marca table are correct — cross-validated against direct DWH queries
+**Depends on**: Phase 2
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. Cobertura (distinct client count) per brand matches a direct COUNT(DISTINCT) query against the DWH for the same period
+  2. Frecuencia (pedidos/clientes) per brand matches a direct calculation from the DWH
+  3. Drop Size BOB (SUM(venta)/pedidos) per brand matches a direct calculation from the DWH
+  4. Δ VSLY percentages are correctly computed as (current - prior) / prior × 100
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 3 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2
+Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Data Integrity | 1/1 | Complete | 2026-03-10 |
-| 2. Narrative and Visibility | 0/1 | Not started | - |
+| 2. Narrative and Visibility | 1/1 | Complete | 2026-03-10 |
+| 3. Driver Data Verification | 0/? | Not started | - |
