@@ -19,6 +19,13 @@
 
 - [x] **VIS-01**: Accuracy de la proyeccion comercial section is hidden via config flag (code preserved, not deleted)
 
+### Driver Data Verification
+
+- [ ] **DRV-01**: Cobertura (distinct client count) per brand matches a direct COUNT(DISTINCT cod_cliente) query against the DWH for the same period
+- [ ] **DRV-02**: Frecuencia (hit_rate = pedidos/clientes) per brand matches a direct calculation from the DWH
+- [ ] **DRV-03**: Drop Size BOB (SUM(ingreso_neto_bob)/pedidos) per brand matches a direct calculation from the DWH
+- [ ] **DRV-04**: Delta VSLY percentages are correctly computed as (current / prior) - 1
+
 ## v2 Requirements
 
 ### Projection Enhancement
@@ -44,12 +51,16 @@
 | NARR-01 | Phase 2 | Complete |
 | NARR-02 | Phase 2 | Complete |
 | VIS-01 | Phase 2 | Complete |
+| DRV-01 | Phase 3 | Planned |
+| DRV-02 | Phase 3 | Planned |
+| DRV-03 | Phase 3 | Planned |
+| DRV-04 | Phase 3 | Planned |
 
 **Coverage:**
-- v1 requirements: 5 total
-- Mapped to phases: 5
+- v1 requirements: 9 total
+- Mapped to phases: 9
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-10 after Phase 3 planning*

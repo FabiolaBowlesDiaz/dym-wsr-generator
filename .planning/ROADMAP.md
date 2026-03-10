@@ -35,7 +35,7 @@ Plans:
 **Requirements**: NARR-01, NARR-02, VIS-01
 **Success Criteria** (what must be TRUE):
   1. Bold text in the regional comments analysis displays as rendered HTML bold (no visible `**asterisks**` in the browser)
-  2. The narrative text uses "productos" instead of "SKUs" and "referencias/presentaciones" instead of "lenguas"
+  2. The narrative text uses "productos" instead of "SKUs" and "referencias/presentaciones" instead of "lenguas" in its output
   3. The Accuracy de la proyeccion comercial section does not appear in the generated HTML output
   4. The accuracy section code remains in the codebase (not deleted), controllable via a config flag
 **Plans**: 1 plan
@@ -44,18 +44,18 @@ Plans:
 - [ ] 02-01-PLAN.md -- Fix bold rendering, add terminology rules to LLM prompts, hide accuracy section via config flag
 
 ### Phase 3: Driver Data Verification
-**Goal**: Cobertura, frecuencia and drop size values in the Drivers de Performance por Marca table are correct — cross-validated against direct DWH queries
+**Goal**: Cobertura, frecuencia and drop size values in the Drivers de Performance por Marca table are correct -- cross-validated against direct DWH queries
 **Depends on**: Phase 2
-**Requirements**: TBD
+**Requirements**: DRV-01, DRV-02, DRV-03, DRV-04
 **Success Criteria** (what must be TRUE):
   1. Cobertura (distinct client count) per brand matches a direct COUNT(DISTINCT) query against the DWH for the same period
   2. Frecuencia (pedidos/clientes) per brand matches a direct calculation from the DWH
   3. Drop Size BOB (SUM(venta)/pedidos) per brand matches a direct calculation from the DWH
-  4. Δ VSLY percentages are correctly computed as (current - prior) / prior × 100
-**Plans**: TBD
+  4. Delta VSLY percentages are correctly computed as (current - prior) / prior x 100
+**Plans**: 1 plan
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 3 to break down)
+- [ ] 03-01-PLAN.md -- Standalone validation script comparing DriversEngine output vs direct DWH queries with PASS/FAIL per brand
 
 ## Progress
 
@@ -66,4 +66,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Data Integrity | 1/1 | Complete | 2026-03-10 |
 | 2. Narrative and Visibility | 1/1 | Complete | 2026-03-10 |
-| 3. Driver Data Verification | 0/? | Not started | - |
+| 3. Driver Data Verification | 0/1 | Not started | - |
