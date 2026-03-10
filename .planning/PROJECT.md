@@ -12,19 +12,15 @@ Los numeros del reporte deben ser consistentes y confiables — si el chart y la
 
 ### Validated
 
-- Seccion 1-3: Tablas de performance por marca, ciudad, canal con PY Sistema (Nowcast), drivers STD, VSLY
-- Seccion 4: Grafica historica de lineas con 4 senales (Venta Real, SOP, PY Gerente, PY Sistema)
-- Seccion 4: Tabla resumen con montos vs SOP
-- Narrativas IA por marca, ciudad, canal (OpenRouter Claude)
-- Analisis de comentarios regionales (IA)
-- Accuracy de la proyeccion comercial (chart interactivo por ciudad)
+- ✓ Chart PY Gerente y SOP alineados con tabla resumen (marca_totales como fuente) — v1.0
+- ✓ Narrativa regional renderiza bold como HTML strong tags — v1.0
+- ✓ Terminologia comercial en narrativas IA (productos, referencias/presentaciones) — v1.0
+- ✓ Seccion Accuracy oculta via config flag (codigo preservado) — v1.0
+- ✓ Drivers (cobertura, frecuencia, drop size) validados contra DWH directo — v1.0
 
 ### Active
 
-- [ ] Fix: Alinear datos del chart historico con los de la tabla resumen (PY Gerente y SOP)
-- [ ] Fix: Renderizar narrativa de comentarios regionales como HTML (no markdown crudo)
-- [ ] Fix: Reemplazar terminologia tecnica (SKUs → productos, lenguas → referencias/presentaciones)
-- [ ] Feature: Ocultar seccion de Accuracy de proyeccion comercial (preservar codigo)
+(None — define in next milestone)
 
 ### Out of Scope
 
@@ -37,9 +33,7 @@ Los numeros del reporte deben ser consistentes y confiables — si el chart y la
 - **DWH**: PostgreSQL SAIV (192.168.80.85:5432), schema auto/dym_stg, requiere VPN
 - **Narrativas IA**: OpenRouter API, claude-opus-4.6 con claude-sonnet-4 fallback
 - **Chart.js**: Para graficas interactivas en HTML output
-- **Discrepancia raiz**: El chart Section 4 consulta `fact_proyecciones` y `factpresupuesto_mensual` directamente a nivel nacional, mientras la tabla suma desde `marca_totales` (pipeline de consolidacion por marca). Diferencia: ~5M BOB en PY Gerente, ~1.4M en SOP.
-- **Narrativa**: La IA genera markdown (`**bold**`) pero se inserta en HTML sin conversion. Tambien usa terminologia tecnica (SKUs, lenguas) que no es natural para el equipo comercial.
-- **Accuracy chart**: Seccion existente que compara Venta Real vs Proyeccion Gerentes por ciudad. No agrega valor aun — ocultar sin eliminar codigo.
+- **v1.0 shipped**: 3 phases, 3 plans, 9 requirements satisfied. Validation script at `scripts/validate_drivers.py`.
 
 ## Constraints
 
@@ -51,9 +45,11 @@ Los numeros del reporte deben ser consistentes y confiables — si el chart y la
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| marca_totales como fuente de verdad | Es el mismo pipeline usado en Secciones 1-3, ya validado | — Pending |
-| Productos/presentaciones como terminologia | Es el lenguaje natural del equipo comercial DYM | — Pending |
-| Ocultar accuracy con flag (no eliminar) | Puede reactivarse cuando agregue valor | — Pending |
+| marca_totales como fuente de verdad | Es el mismo pipeline usado en Secciones 1-3, ya validado | ✓ Good — eliminated ~5M BOB discrepancy |
+| Productos/presentaciones como terminologia | Es el lenguaje natural del equipo comercial DYM | ✓ Good — enforced in both LLM prompts |
+| Ocultar accuracy con flag (no eliminar) | Puede reactivarse cuando agregue valor | ✓ Good — SHOW_ACCURACY_SECTION=False, reversible |
+| Proportional weekly scaling for chart | Preserves week-over-week selling pattern while correcting totals | ✓ Good — no visual regression |
+| Config flag pattern (early return + try/except) | Graceful degradation if config module unavailable | ✓ Good — reusable pattern |
 
 ---
-*Last updated: 2026-03-09 after initialization*
+*Last updated: 2026-03-10 after v1.0 milestone*
