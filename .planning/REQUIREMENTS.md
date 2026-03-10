@@ -12,12 +12,12 @@
 
 ### Narrative Quality
 
-- [ ] **NARR-01**: Regional comments analysis renders bold text as HTML `<strong>` tags (not raw `**markdown**` asterisks)
-- [ ] **NARR-02**: AI narrative uses "productos" instead of "SKUs" and "referencias/presentaciones" instead of "lenguas" in its output
+- [x] **NARR-01**: Regional comments analysis renders bold text as HTML `<strong>` tags (not raw `**markdown**` asterisks)
+- [x] **NARR-02**: AI narrative uses "productos" instead of "SKUs" and "referencias/presentaciones" instead of "lenguas" in its output
 
 ### Section Visibility
 
-- [ ] **VIS-01**: Accuracy de la proyeccion comercial section is hidden via config flag (code preserved, not deleted)
+- [x] **VIS-01**: Accuracy de la proyeccion comercial section is hidden via config flag (code preserved, not deleted)
 
 ## v2 Requirements
 
@@ -41,9 +41,9 @@
 |-------------|-------|--------|
 | DATA-01 | Phase 1 | Complete |
 | DATA-02 | Phase 1 | Complete |
-| NARR-01 | Phase 2 | Pending |
-| NARR-02 | Phase 2 | Pending |
-| VIS-01 | Phase 2 | Pending |
+| NARR-01 | Phase 2 | Complete |
+| NARR-02 | Phase 2 | Complete |
+| VIS-01 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 5 total
