@@ -27,8 +27,10 @@ from utils.html_tables import HTMLTableGenerator
 # Módulo de Proyección Objetiva (nuevo)
 try:
     from proyeccion_objetiva import ProjectionProcessor
+    from proyeccion_objetiva.nowcast_engine import NowcastEngine
     from proyeccion_objetiva.visualizacion.projection_html_generator import ProjectionHTMLGenerator, get_projection_css
     from proyeccion_objetiva.visualizacion.projection_chart_generator import ProjectionChartGenerator
+    from utils.business_days import BusinessDaysCalculator
     PROJECTION_MODULE_AVAILABLE = True
 except ImportError as e:
     PROJECTION_MODULE_AVAILABLE = False
@@ -112,6 +114,8 @@ class WSRGeneratorSystem:
                 data['ciudad'], data['ciudad_marca']
             )
             ciudades_df = estructura_ciudad['ciudad_totales']
+            # Pasar orden nacional de marcas para que el drilldown de ciudad use el mismo orden
+            estructura_ciudad['marca_order'] = marcas_df['marcadir'].tolist()
 
             canales_df = self.data_processor.consolidate_canal_data(data['canal'])
             
@@ -131,7 +135,16 @@ class WSRGeneratorSystem:
 
             # 6. Generar gráfico de tendencia comparativa
             logger.info("\n📊 Generando gráfico de tendencia comparativa...")
-            trend_chart_html = self._generate_trend_chart()
+            # Compute marca_totales-derived totals for chart alignment
+            py_col = f'py_{self.current_year}_bob'
+            chart_py_gerente = float(marcas_df[py_col].sum()) if py_col in marcas_df.columns else None
+            chart_sop = float(marcas_df['ppto_general_bob'].sum()) if 'ppto_general_bob' in marcas_df.columns else None
+            if chart_py_gerente is not None and chart_sop is not None:
+                logger.info(f"Chart alignment: PY Gerente={chart_py_gerente:,.0f}, SOP={chart_sop:,.0f} (from marca_totales)")
+            trend_chart_html = self._generate_trend_chart(
+                py_gerente_total=chart_py_gerente,
+                sop_total=chart_sop
+            )
 
             # 7. Obtener y procesar datos de Hit Rate
             logger.info("\n📈 Obteniendo datos de Hit Rate y Eficiencia...")
@@ -141,7 +154,7 @@ class WSRGeneratorSystem:
             projection_data = None
             if PROJECTION_MODULE_AVAILABLE:
                 try:
-                    logger.info("\n📊 Generando proyecciones objetivas (triple pilar)...")
+                    logger.info("\n📊 Generando proyecciones objetivas...")
                     proj_processor = ProjectionProcessor(
                         self.db_manager, self.current_date, self.schema
                     )
@@ -179,9 +192,9 @@ class WSRGeneratorSystem:
                             return tgt
 
                         # Merge en marca_totales
-                        by_marca = projection_data.get('by_marca', pd.DataFrame())
+                        est_marca = projection_data.get('est_by_marca', pd.DataFrame())
                         estructura_marca['marca_totales'] = _merge_py_est(
-                            estructura_marca['marca_totales'], by_marca, ['marcadir']
+                            estructura_marca['marca_totales'], est_marca, ['marcadir']
                         )
 
                         # Merge en marca_subfamilia
@@ -191,9 +204,9 @@ class WSRGeneratorSystem:
                         )
 
                         # Merge en ciudad_totales
-                        by_ciudad = projection_data.get('by_ciudad', pd.DataFrame())
+                        est_ciudad = projection_data.get('est_by_ciudad', pd.DataFrame())
                         estructura_ciudad['ciudad_totales'] = _merge_py_est(
-                            estructura_ciudad['ciudad_totales'], by_ciudad, ['ciudad']
+                            estructura_ciudad['ciudad_totales'], est_ciudad, ['ciudad']
                         )
 
                         # Merge en ciudad_marca
@@ -206,20 +219,146 @@ class WSRGeneratorSystem:
                         est_canal = projection_data.get('est_by_canal', pd.DataFrame())
                         canales_df = _merge_py_est(canales_df, est_canal, ['canal'])
 
-                        logger.info("✅ PY Estadística embebida en tablas de performance")
+                        # Reconciliación top-down: escalar HW de ciudad/canal para coincidir con marca total
+                        total_hw_marca = estructura_marca['marca_totales']['py_estadistica_bob'].sum() if 'py_estadistica_bob' in estructura_marca['marca_totales'].columns else 0
+                        if total_hw_marca > 0:
+                            for tgt_df in [estructura_ciudad['ciudad_totales'], estructura_ciudad['ciudad_marca'], canales_df]:
+                                if 'py_estadistica_bob' in tgt_df.columns:
+                                    total_hw = tgt_df['py_estadistica_bob'].sum()
+                                    if total_hw > 0:
+                                        tgt_df['py_estadistica_bob'] *= (total_hw_marca / total_hw)
+
+                        # Merge PY Estadística C9L
+                        est_marca_c9l = projection_data.get('est_by_marca_c9l', pd.DataFrame())
+                        estructura_marca['marca_totales'] = _merge_py_est(
+                            estructura_marca['marca_totales'], est_marca_c9l, ['marcadir'], value_col='py_estadistica_c9l'
+                        )
+                        est_subfam_c9l = projection_data.get('est_by_subfamilia_c9l', pd.DataFrame())
+                        estructura_marca['marca_subfamilia'] = _merge_py_est(
+                            estructura_marca['marca_subfamilia'], est_subfam_c9l, ['marcadir', 'subfamilia'], value_col='py_estadistica_c9l'
+                        )
+                        est_ciudad_c9l = projection_data.get('est_by_ciudad_c9l', pd.DataFrame())
+                        estructura_ciudad['ciudad_totales'] = _merge_py_est(
+                            estructura_ciudad['ciudad_totales'], est_ciudad_c9l, ['ciudad'], value_col='py_estadistica_c9l'
+                        )
+                        est_ciudad_marca_c9l = projection_data.get('est_by_ciudad_marca_c9l', pd.DataFrame())
+                        estructura_ciudad['ciudad_marca'] = _merge_py_est(
+                            estructura_ciudad['ciudad_marca'], est_ciudad_marca_c9l, ['ciudad', 'marcadir'], value_col='py_estadistica_c9l'
+                        )
+                        est_canal_c9l = projection_data.get('est_by_canal_c9l', pd.DataFrame())
+                        canales_df = _merge_py_est(canales_df, est_canal_c9l, ['canal'], value_col='py_estadistica_c9l')
+
+                        # Reconciliación top-down C9L
+                        total_hw_marca_c9l = estructura_marca['marca_totales']['py_estadistica_c9l'].sum() if 'py_estadistica_c9l' in estructura_marca['marca_totales'].columns else 0
+                        if total_hw_marca_c9l > 0:
+                            for tgt_df in [estructura_ciudad['ciudad_totales'], estructura_ciudad['ciudad_marca'], canales_df]:
+                                if 'py_estadistica_c9l' in tgt_df.columns:
+                                    total_hw = tgt_df['py_estadistica_c9l'].sum()
+                                    if total_hw > 0:
+                                        tgt_df['py_estadistica_c9l'] *= (total_hw_marca_c9l / total_hw)
+
+                        logger.info("✅ PY Estadística embebida en tablas de performance (BOB + C9L)")
                     except Exception as e:
                         logger.warning(f"⚠️ Error embebiendo PY Estadística (tablas se generan sin esta columna): {e}")
 
-                    # 7.7 Generar narrativa IA de proyecciones
+                    # 7.6.5 Calcular PY Sistema (Nowcast = blend HW + Run Rate)
+                    nowcast_meta = {}
+                    try:
+                        biz_calc = BusinessDaysCalculator()
+                        dias_mes, dias_avance, pct_avance = biz_calc.calculate_business_days(self.current_date)
+                        nowcast = NowcastEngine(self.current_date, dias_mes, dias_avance)
+                        nowcast_meta = nowcast.get_metadata()
+                        avance_col = f'avance_{self.current_year}_bob'
+
+                        # Calcular PY Sistema en cada DataFrame
+                        estructura_marca['marca_totales'] = nowcast.calculate(
+                            estructura_marca['marca_totales'], avance_col
+                        )
+                        estructura_marca['marca_subfamilia'] = nowcast.calculate(
+                            estructura_marca['marca_subfamilia'], avance_col
+                        )
+                        estructura_ciudad['ciudad_totales'] = nowcast.calculate(
+                            estructura_ciudad['ciudad_totales'], avance_col
+                        )
+                        estructura_ciudad['ciudad_marca'] = nowcast.calculate(
+                            estructura_ciudad['ciudad_marca'], avance_col
+                        )
+                        canales_df = nowcast.calculate(canales_df, avance_col)
+
+                        # Nowcast C9L
+                        avance_col_c9l = f'avance_{self.current_year}_c9l'
+                        estructura_marca['marca_totales'] = nowcast.calculate(
+                            estructura_marca['marca_totales'], avance_col_c9l,
+                            hw_col='py_estadistica_c9l', value_suffix='c9l'
+                        )
+                        estructura_marca['marca_subfamilia'] = nowcast.calculate(
+                            estructura_marca['marca_subfamilia'], avance_col_c9l,
+                            hw_col='py_estadistica_c9l', value_suffix='c9l'
+                        )
+                        estructura_ciudad['ciudad_totales'] = nowcast.calculate(
+                            estructura_ciudad['ciudad_totales'], avance_col_c9l,
+                            hw_col='py_estadistica_c9l', value_suffix='c9l'
+                        )
+                        estructura_ciudad['ciudad_marca'] = nowcast.calculate(
+                            estructura_ciudad['ciudad_marca'], avance_col_c9l,
+                            hw_col='py_estadistica_c9l', value_suffix='c9l'
+                        )
+                        canales_df = nowcast.calculate(canales_df, avance_col_c9l,
+                            hw_col='py_estadistica_c9l', value_suffix='c9l'
+                        )
+
+                        logger.info(f"✅ PY Sistema calculado BOB + C9L (w={nowcast_meta['w']:.2%} credibilidad)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error calculando PY Sistema (se usa PY Estadística como fallback): {e}")
+
+                    # 7.7 Generar narrativa IA de proyecciones (PY Sistema)
                     try:
                         from proyeccion_objetiva.narrative_generator import ProjectionNarrativeGenerator
                         narr_gen = ProjectionNarrativeGenerator()
                         projection_data['narrative_html'] = narr_gen.generate_narrative(
                             projection_data, estructura_marca.get('marca_totales', pd.DataFrame()),
-                            self.current_date
+                            self.current_date, nowcast_meta=nowcast_meta
                         )
                     except Exception as e:
-                        logger.warning(f"⚠️ Narrativa IA no generada: {e}")
+                        logger.warning(f"Narrativa IA PY Sistema no generada: {e}")
+
+                    # 7.8 Generar narrativa IA de Drivers de Performance (Pilar 3)
+                    try:
+                        drivers_data = projection_data.get('drivers_data', {})
+                        drivers_by_marca = drivers_data.get('by_marca', pd.DataFrame())
+                        if not drivers_by_marca.empty:
+                            from proyeccion_objetiva.pilar3_operativa.drivers_narrative import DriversNarrativeGenerator
+                            drivers_narr_gen = DriversNarrativeGenerator()
+                            drivers_by_marca_sub = drivers_data.get('by_marca_submarca', pd.DataFrame())
+                            projection_data['drivers_narrative_html'] = drivers_narr_gen.generate_diagnostic(
+                                drivers_by_marca, self.current_date, level="marca",
+                                detail_df=drivers_by_marca_sub
+                            )
+                            logger.info("[Drivers] Narrativa IA de drivers por marca generada")
+
+                            # Narrativa IA para ciudades (con detalle marca×ciudad)
+                            drivers_by_ciudad = drivers_data.get('by_ciudad', pd.DataFrame())
+                            drivers_by_ciudad_marca = drivers_data.get('by_ciudad_marca', pd.DataFrame())
+                            if not drivers_by_ciudad.empty:
+                                projection_data['drivers_ciudad_narrative_html'] = drivers_narr_gen.generate_diagnostic(
+                                    drivers_by_ciudad, self.current_date, level="ciudad",
+                                    detail_df=drivers_by_ciudad_marca
+                                )
+                                logger.info("[Drivers] Narrativa IA de drivers por ciudad generada")
+
+                            # Narrativa IA para canales (con detalle subcanal)
+                            drivers_by_canal = drivers_data.get('by_canal', pd.DataFrame())
+                            drivers_by_canal_sub = drivers_data.get('by_canal_subcanal', pd.DataFrame())
+                            if not drivers_by_canal.empty:
+                                projection_data['drivers_canal_narrative_html'] = drivers_narr_gen.generate_diagnostic(
+                                    drivers_by_canal, self.current_date, level="canal",
+                                    detail_df=drivers_by_canal_sub
+                                )
+                                logger.info("[Drivers] Narrativa IA de drivers por canal generada")
+                        else:
+                            logger.info("[Drivers] Sin datos de drivers por marca (tabla vacia)")
+                    except Exception as e:
+                        logger.warning(f"Narrativa IA de Drivers no generada: {e}")
 
                 except Exception as e:
                     logger.warning(f"⚠️ Módulo de Proyección Objetiva falló (WSR se genera sin esta sección): {e}")
@@ -456,43 +595,84 @@ class WSRGeneratorSystem:
         # Extender HTMLGenerator con métodos de tablas
         # Si tenemos estructura jerárquica, pasar a generate_marca_tables
         narrative_html = projection_data.get('narrative_html', '') if projection_data else ''
+        drivers_data = projection_data.get('drivers_data', {}) if projection_data else {}
+        drivers_narrative_html = projection_data.get('drivers_narrative_html', '') if projection_data else ''
+
+        # Obtener lista de marcas válidas del WSR para filtrar drivers
+        valid_marcas = None
+        if estructura_marca and 'marca_totales' in estructura_marca:
+            valid_marcas = estructura_marca['marca_totales']['marcadir'].tolist()
 
         if estructura_marca:
             self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(
-                df, estructura_jerarquica=estructura_marca, narrative_html=narrative_html
+                df, estructura_jerarquica=estructura_marca, narrative_html=narrative_html,
+                drivers_data=drivers_data, drivers_narrative_html=drivers_narrative_html,
+                valid_marcas=valid_marcas
             )
         else:
             self.html_generator._generate_marca_tables = lambda df: self.table_generator.generate_marca_tables(
-                df, narrative_html=narrative_html
+                df, narrative_html=narrative_html,
+                drivers_data=drivers_data, drivers_narrative_html=drivers_narrative_html,
+                valid_marcas=valid_marcas
             )
 
         # Si tenemos estructura jerárquica de ciudad, pasar a _generate_ciudad_tables
+        drivers_ciudad_narr = projection_data.get('drivers_ciudad_narrative_html', '') if projection_data else ''
         if estructura_ciudad:
             self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(
-                df, estructura_jerarquica=estructura_ciudad
+                df, estructura_jerarquica=estructura_ciudad, drivers_data=drivers_data,
+                drivers_ciudad_narrative=drivers_ciudad_narr
             )
         else:
-            self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(df)
-        self.html_generator._generate_canal_tables = lambda df: self._generate_canal_tables(df)
+            self.html_generator._generate_ciudad_tables = lambda df: self._generate_ciudad_tables(
+                df, drivers_data=drivers_data, drivers_ciudad_narrative=drivers_ciudad_narr
+            )
+        drivers_canal_narr = projection_data.get('drivers_canal_narrative_html', '') if projection_data else ''
+        self.html_generator._generate_canal_tables = lambda df: self._generate_canal_tables(
+            df, drivers_data=drivers_data, drivers_canal_narrative=drivers_canal_narr
+        )
         self.html_generator._generate_stock_analysis = lambda df: self._generate_stock_analysis(df)
         self.html_generator._generate_footer = lambda: self._generate_footer()
         
-        # Generar sección de Proyección Objetiva (si hay datos)
+        # Generar Sección 4: Resumen Ejecutivo — Señales de Cierre
         projection_html = ""
         if projection_data and PROJECTION_MODULE_AVAILABLE:
             try:
                 proj_html_gen = ProjectionHTMLGenerator(self.html_generator.format_number)
                 proj_chart_gen = ProjectionChartGenerator()
 
-                chart_html = proj_chart_gen.generate_comparison_chart(
-                    projection_data.get('by_marca', pd.DataFrame())
+                # Calcular totales nacionales del mes actual
+                # Nota: py_sistema_bob vive en estructura_marca (calculado por Nowcast), no en marcas_df
+                marca_totales = estructura_marca.get('marca_totales', marcas_df) if estructura_marca else marcas_df
+                avance_col = f'avance_{self.current_year}_bob'
+                py_col = f'py_{self.current_year}_bob'
+                avance_nacional = marca_totales[avance_col].sum() if avance_col in marca_totales.columns else 0
+                sop_nacional = marca_totales['ppto_general_bob'].sum() if 'ppto_general_bob' in marca_totales.columns else 0
+                py_gerente_nacional = marca_totales[py_col].sum() if py_col in marca_totales.columns else 0
+                py_sistema_nacional = marca_totales['py_sistema_bob'].sum() if 'py_sistema_bob' in marca_totales.columns else 0
+
+                # Gráfica histórica
+                historico_nacional = projection_data.get('historico_nacional', {})
+                chart_html = proj_chart_gen.generate_historical_chart(
+                    historico_nacional,
+                    py_sistema_nacional=py_sistema_nacional,
+                    avance_nacional=avance_nacional,
+                    current_year=self.current_year,
+                    current_month=self.current_month
                 )
+
+                # Sección completa
                 projection_html = proj_html_gen.generate_full_section(
-                    projection_data, chart_html
+                    chart_html=chart_html,
+                    sop_nacional=sop_nacional,
+                    py_gerente_nacional=py_gerente_nacional,
+                    py_sistema_nacional=py_sistema_nacional,
+                    avance_nacional=avance_nacional
                 )
-                # Narrativa IA se inyecta en generate_marca_tables (después de tabla BOB)
             except Exception as e:
-                logger.warning(f"Error generando HTML de proyección objetiva: {e}")
+                logger.warning(f"Error generando HTML de Resumen Ejecutivo: {e}")
+                import traceback
+                logger.warning(traceback.format_exc())
                 projection_html = ""
 
         # Generar HTML completo
@@ -504,7 +684,8 @@ class WSRGeneratorSystem:
 
         return html
     
-    def _generate_ciudad_tables(self, df, estructura_jerarquica=None):
+    def _generate_ciudad_tables(self, df, estructura_jerarquica=None, drivers_data=None,
+                                drivers_ciudad_narrative: str = ""):
         """Generar tablas de ciudad"""
         if df.empty:
             return "<p>No hay datos disponibles para ciudades</p>"
@@ -516,19 +697,35 @@ class WSRGeneratorSystem:
         else:
             html += self.table_generator.generate_ciudad_performance_bob(df)
 
+        # Insertar Drivers de Performance por Ciudad después de la tabla BOB
+        if drivers_data:
+            html += self.table_generator.generate_drivers_section(
+                drivers_data, narrative_html=drivers_ciudad_narrative, level="ciudad"
+            )
+
         html += self.table_generator.generate_ciudad_semanal_bob(df)
-        html += self.table_generator.generate_ciudad_performance_c9l(df)
+
+        # Para C9L, usar ciudad_totales de estructura (tiene columnas nowcast C9L)
+        ciudad_c9l_df = estructura_jerarquica.get('ciudad_totales', df) if estructura_jerarquica else df
+        html += self.table_generator.generate_ciudad_performance_c9l(ciudad_c9l_df)
         html += self.table_generator.generate_ciudad_semanal_c9l(df)
 
         return html
     
-    def _generate_canal_tables(self, df):
-        """Generar tablas de canal"""
+    def _generate_canal_tables(self, df, drivers_data=None, drivers_canal_narrative: str = ""):
+        """Generar tablas de canal con drivers operativos"""
         if df.empty:
             return "<p>No hay datos disponibles para canales</p>"
 
         html = ""
         html += self.table_generator.generate_canal_performance_bob(df)
+
+        # Insertar Drivers de Performance por Canal después de la tabla BOB
+        if drivers_data:
+            html += self.table_generator.generate_drivers_section(
+                drivers_data, narrative_html=drivers_canal_narrative, level="canal"
+            )
+
         html += self.table_generator.generate_canal_semanal_bob(df)
         html += self.table_generator.generate_canal_performance_c9l(df)
         html += self.table_generator.generate_canal_semanal_c9l(df)
@@ -581,18 +778,28 @@ class WSRGeneratorSystem:
         """Generar pie de página con notas metodológicas"""
         return f"""
         <div class="footer">
-            <h4>NOTAS METODOLÓGICAS</h4>
+            <h4>NOTAS METODOLOGICAS</h4>
             <ul>
-                <li>Tipo de cambio aplicado: 6.96 BOB/USD para conversión de proyecciones</li>
-                <li>Cobertura de stock: Calculada con base en venta promedio diaria últimos {self.current_day} días</li>
-                <li>PY {self.current_year} por canal: Calculado mediante multiplicador ponderado (80% peso en avance actual)</li>
-                <li>Ciudades sin gerente: {"Trinidad usa" if self.current_year >= 2026 else "Oruro y Trinidad usan"} presupuesto mensual como proyeccion</li>
-                <li>Exclusiones aplicadas: Ciudad/Canal Turismo y marcas "Ninguna"/"Sin marca asignada"</li>
-                <li>Datos actualizados al: {self.current_date.strftime('%d/%m/%Y %H:%M')}</li>
+                <li><strong>PY Sistema (Nowcast)</strong>: Proyeccion hibrida que combina el Modelo Historico Holt-Winters
+                    (entrenado sobre 24-36 meses de ventas reales, captura tendencia y estacionalidad) con el Ritmo Actual
+                    de ventas del mes extrapolado al cierre. El peso se ajusta diariamente: al inicio de mes domina el modelo
+                    historico; conforme avanzan las ventas reales, el ritmo actual gana protagonismo.</li>
+                <li><strong>Drivers de Performance</strong>: Venta = Cobertura x Frecuencia x Drop Size.
+                    Comparacion Same-to-Date (STD): mismos dias del mes actual vs mismos dias del ano anterior.
+                    Fuente: <em>fact_ventas_detallado</em> (nivel item con cliente y factura unicos).</li>
+                <li><strong>Narrativa IA</strong>: Los resumenes ejecutivos en Drivers (marca, ciudad, canal) y PY Sistema
+                    son generados por IA (Claude, Anthropic) basandose exclusivamente en los datos del reporte.
+                    No reemplazan el criterio del equipo comercial.</li>
+                <li><strong>PY {self.current_year} por canal</strong>: Calculado mediante multiplicador ponderado (80% peso en avance actual).</li>
+                <li><strong>Tipo de cambio</strong>: 6.96 BOB/USD para conversion de proyecciones.</li>
+                <li><strong>Cobertura de stock</strong>: Calculada con base en venta promedio diaria ultimos {self.current_day} dias.</li>
+                <li><strong>Ciudades sin gerente</strong>: {"Trinidad usa" if self.current_year >= 2026 else "Oruro y Trinidad usan"} presupuesto mensual como proyeccion.</li>
+                <li><strong>Exclusiones</strong>: Ciudad/Canal Turismo y marcas "Ninguna"/"Sin marca asignada".</li>
+                <li><strong>Datos actualizados al</strong>: {self.current_date.strftime('%d/%m/%Y %H:%M')}.</li>
             </ul>
             <p style="margin-top: 15px; font-style: italic;">
-                Generado automáticamente por el sistema de Business Intelligence de DYM<br>
-                Para consultas sobre este reporte, contactar al área de Análisis Comercial
+                Generado automaticamente por el sistema de Business Intelligence de DYM<br>
+                Para consultas sobre este reporte, contactar al area de Analisis Comercial
             </p>
         </div>
         """
@@ -617,10 +824,14 @@ class WSRGeneratorSystem:
         return str(filepath)
 
 
-    def _generate_trend_chart(self) -> str:
+    def _generate_trend_chart(self, py_gerente_total: float = None, sop_total: float = None) -> str:
         """
         Generar gráfico de tendencia comparativa ventas vs proyecciones
         Incluye SOP distribuido de Oruro y Trinidad
+
+        Args:
+            py_gerente_total: Total PY Gerente mensual desde marca_totales (override para vista general)
+            sop_total: Total SOP mensual desde marca_totales (override para vista general)
 
         Returns:
             HTML del gráfico interactivo
@@ -660,11 +871,18 @@ class WSRGeneratorSystem:
                 proyecciones_semanales,
                 ventas_por_ciudad,
                 proyecciones_por_ciudad,
-                sop_oruro_trinidad
+                sop_oruro_trinidad,
+                override_py_gerente_total=py_gerente_total,
+                override_sop_total=sop_total
             )
 
             # Generar HTML del gráfico con selector de ciudades
             chart_html = self.trend_chart_generator.generate_chart_html(chart_data)
+
+            # Log chart general totals for verification against summary table
+            if 'general' in chart_data:
+                gen_total = chart_data['general'].get('totales', {})
+                logger.info(f"Chart general total proyeccion: {gen_total.get('proyeccion_bob', 0):,.0f} BOB")
 
             logger.info("Gráfico de tendencia multi-ciudad generado exitosamente")
             return chart_html
