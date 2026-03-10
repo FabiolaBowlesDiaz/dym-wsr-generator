@@ -7,8 +7,8 @@
 
 ### Data Integrity
 
-- [ ] **DATA-01**: Chart historical line for PY Gerente current month uses same value as the summary table (from marca_totales pipeline)
-- [ ] **DATA-02**: Chart historical line for SOP current month uses same value as the summary table (from marca_totales pipeline)
+- [x] **DATA-01**: Chart historical line for PY Gerente current month uses same value as the summary table (from marca_totales pipeline)
+- [x] **DATA-02**: Chart historical line for SOP current month uses same value as the summary table (from marca_totales pipeline)
 
 ### Narrative Quality
 
@@ -39,8 +39,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
+| DATA-02 | Phase 1 | Complete |
 | NARR-01 | Phase 2 | Pending |
 | NARR-02 | Phase 2 | Pending |
 | VIS-01 | Phase 2 | Pending |
