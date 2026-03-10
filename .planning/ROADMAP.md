@@ -37,10 +37,10 @@ Plans:
   2. The narrative text uses "productos" instead of "SKUs" and "referencias/presentaciones" instead of "lenguas"
   3. The Accuracy de la proyeccion comercial section does not appear in the generated HTML output
   4. The accuracy section code remains in the codebase (not deleted), controllable via a config flag
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md -- Fix bold rendering, add terminology rules to LLM prompts, hide accuracy section via config flag
 
 ## Progress
 
@@ -49,5 +49,5 @@ Phases execute in numeric order: 1 -> 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Data Integrity | 0/1 | Not started | - |
-| 2. Narrative and Visibility | 0/? | Not started | - |
+| 1. Data Integrity | 1/1 | Complete | 2026-03-10 |
+| 2. Narrative and Visibility | 0/1 | Not started | - |
