@@ -21,10 +21,10 @@
 
 ### Driver Data Verification
 
-- [ ] **DRV-01**: Cobertura (distinct client count) per brand matches a direct COUNT(DISTINCT cod_cliente) query against the DWH for the same period
-- [ ] **DRV-02**: Frecuencia (hit_rate = pedidos/clientes) per brand matches a direct calculation from the DWH
-- [ ] **DRV-03**: Drop Size BOB (SUM(ingreso_neto_bob)/pedidos) per brand matches a direct calculation from the DWH
-- [ ] **DRV-04**: Delta VSLY percentages are correctly computed as (current / prior) - 1
+- [x] **DRV-01**: Cobertura (distinct client count) per brand matches a direct COUNT(DISTINCT cod_cliente) query against the DWH for the same period
+- [x] **DRV-02**: Frecuencia (hit_rate = pedidos/clientes) per brand matches a direct calculation from the DWH
+- [x] **DRV-03**: Drop Size BOB (SUM(ingreso_neto_bob)/pedidos) per brand matches a direct calculation from the DWH
+- [x] **DRV-04**: Delta VSLY percentages are correctly computed as (current / prior) - 1
 
 ## v2 Requirements
 
