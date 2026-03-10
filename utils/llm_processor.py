@@ -99,6 +99,7 @@ INSTRUCCIONES ESPECÍFICAS:
 7. Si mencionan "cupeo", "quiebres" o "stock", repórtalos como situaciones específicas
 8. Evita términos alarmistas como "crítico", "sistemático", "ineficiencias" sin evidencia clara
 9. NO agregues números que no están explícitamente en los comentarios originales
+10. Usa "productos" en lugar de "SKUs" y "referencias" o "presentaciones" en lugar de "lenguas"
 
 FORMATO DESEADO:
 - Párrafo 1: Resumen directo de la situación reportada por los gerentes
@@ -267,6 +268,13 @@ class CommentFormatter:
     """Formateador visual de comentarios para HTML"""
 
     @staticmethod
+    def _convert_bold(text: str) -> str:
+        """Convert markdown **bold** to HTML <strong> tags."""
+        while '**' in text:
+            text = text.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
+        return text
+
+    @staticmethod
     def format_html_comments(processed_comments: str, insights: Dict = None) -> str:
         """
         Formatear comentarios procesados para el reporte HTML
@@ -287,7 +295,7 @@ class CommentFormatter:
                 <span style="font-size: 18px;">💬</span> ANÁLISIS DE COMENTARIOS REGIONALES
             </h4>
             <div class="comments-text" style="line-height: 1.6; color: #374151;">
-                {processed_comments.replace('\n\n', '</p><p>').replace('\n', '<br>')}
+                {CommentFormatter._convert_bold(processed_comments).replace('\n\n', '</p><p>').replace('\n', '<br>')}
             </div>
         </div>
         '''
