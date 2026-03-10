@@ -808,7 +808,13 @@ class WSRGeneratorSystem:
                     historico; conforme avanzan las ventas reales, el ritmo actual gana protagonismo.</li>
                 <li><strong>Drivers de Performance</strong>: Venta = Cobertura x Frecuencia x Drop Size.
                     Comparacion Same-to-Date (STD): mismos dias del mes actual vs mismos dias del ano anterior.
-                    Fuente: <em>fact_ventas_detallado</em> (nivel item con cliente y factura unicos).</li>
+                    Fuente: tabla <em>fact_ventas_detallado</em> del DWH (nivel item con cliente y factura unicos).
+                    <br><strong>Formulas exactas:</strong>
+                    <br>1. <strong>Cobertura</strong> (cli) = COUNT(DISTINCT cod_cliente) — clientes unicos que compraron en el periodo.
+                    <br>2. <strong>Frecuencia</strong> (ped/cli) = COUNT(DISTINCT cuf_factura) / COUNT(DISTINCT cod_cliente) — pedidos unicos por cliente.
+                    <br>3. <strong>Drop Size</strong> (BOB/ped) = SUM(ingreso_neto_bob) / COUNT(DISTINCT cuf_factura) — ingreso neto promedio por pedido.
+                    <br><strong>Check multiplicativo:</strong> Cobertura x Frecuencia x Drop Size = SUM(ingreso_neto_bob) (identidad exacta, diferencias menores por redondeo).
+                    <br><strong>Delta VSLY:</strong> (valor periodo actual / valor mismo periodo ano anterior) - 1.</li>
                 <li><strong>Narrativa IA</strong>: Los resumenes ejecutivos en Drivers (marca, ciudad, canal) y PY Sistema
                     son generados por IA (Claude, Anthropic) basandose exclusivamente en los datos del reporte.
                     No reemplazan el criterio del equipo comercial.</li>
