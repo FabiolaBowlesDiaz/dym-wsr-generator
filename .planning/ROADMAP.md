@@ -23,10 +23,10 @@ Fix data integrity issues in the Section 4 chart (PY Gerente and SOP values dive
   1. PY Gerente value displayed in the chart line for the current month equals the PY Gerente value shown in the summary table (both sourced from marca_totales)
   2. SOP value displayed in the chart line for the current month equals the SOP value shown in the summary table (both sourced from marca_totales)
   3. The WSR generates without errors for all sections (no breaking changes)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md -- Align chart PY Gerente and SOP with marca_totales (override national totals, preserve weekly distribution)
 
 ### Phase 2: Narrative and Visibility
 **Goal**: Regional narrative renders cleanly as HTML with commercial terminology, and the accuracy section is hidden without deleting code
@@ -49,5 +49,5 @@ Phases execute in numeric order: 1 -> 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Data Integrity | 0/? | Not started | - |
+| 1. Data Integrity | 0/1 | Not started | - |
 | 2. Narrative and Visibility | 0/? | Not started | - |

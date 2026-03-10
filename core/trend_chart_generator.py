@@ -103,7 +103,9 @@ class TrendChartGenerator:
     def process_weekly_data(self,
                            ventas_df: pd.DataFrame,
                            proyecciones_df: pd.DataFrame,
-                           sop_oruro_trinidad_df: pd.DataFrame = None) -> Dict:
+                           sop_oruro_trinidad_df: pd.DataFrame = None,
+                           override_py_gerente_total: float = None,
+                           override_sop_total: float = None) -> Dict:
         """
         Procesar datos semanales de ventas y proyecciones (solo BOB)
         Incluye distribución semanal del SOP de Oruro y Trinidad
@@ -112,6 +114,8 @@ class TrendChartGenerator:
             ventas_df: DataFrame con ventas semanales
             proyecciones_df: DataFrame con proyecciones de gerentes
             sop_oruro_trinidad_df: DataFrame con SOP mensual de Oruro y Trinidad
+            override_py_gerente_total: Total PY Gerente mensual desde marca_totales (override)
+            override_sop_total: Total SOP mensual desde marca_totales (override)
 
         Returns:
             Diccionario con datos procesados para el gráfico
@@ -127,6 +131,29 @@ class TrendChartGenerator:
             }
 
             # Procesar cada semana (siempre todas las 5 semanas para proyecciones)
+            # First pass: collect raw weekly projection values for shape
+            raw_weekly_projections = []
+            for week in range(1, 6):
+                proy_bob_gerentes = self._get_proyeccion_semana(proyecciones_df, week)
+                proy_bob_sop = self._get_sop_distribuido_semana(sop_oruro_trinidad_df, week, include_future=True)
+                raw_weekly_projections.append(proy_bob_gerentes + proy_bob_sop)
+
+            # Apply marca_totales override if provided (scale weekly shape to match override totals)
+            if override_py_gerente_total is not None and override_sop_total is not None:
+                combined_total = override_py_gerente_total + override_sop_total
+                raw_total = sum(raw_weekly_projections)
+                if raw_total > 0:
+                    scale_factor = combined_total / raw_total
+                    weekly_projections = [v * scale_factor for v in raw_weekly_projections]
+                else:
+                    # No weekly shape available, distribute evenly
+                    weekly_projections = [combined_total / 5.0] * 5
+                logger.info(f"PY Gerente override: {override_py_gerente_total:,.0f} (from marca_totales)")
+                logger.info(f"SOP override: {override_sop_total:,.0f} (from marca_totales)")
+                logger.info(f"Combined override: {combined_total:,.0f}, scale factor: {scale_factor if raw_total > 0 else 'even distribution'}")
+            else:
+                weekly_projections = raw_weekly_projections
+
             for week in range(1, 6):
                 semana_label = f"Semana {week}"
                 data['semanas'].append(semana_label)
@@ -140,10 +167,8 @@ class TrendChartGenerator:
 
                 data['ventas_bob'].append(float(venta_bob))
 
-                # Proyecciones BOB (gerentes + SOP distribuido) - SIEMPRE todas las semanas
-                proy_bob_gerentes = self._get_proyeccion_semana(proyecciones_df, week)
-                proy_bob_sop = self._get_sop_distribuido_semana(sop_oruro_trinidad_df, week, include_future=True)
-                proy_bob_total = proy_bob_gerentes + proy_bob_sop
+                # Proyecciones BOB - use override-scaled values if available
+                proy_bob_total = weekly_projections[week - 1]
                 data['proyecciones_bob'].append(float(proy_bob_total))
 
                 # Calcular cumplimiento (solo para semanas transcurridas)
@@ -606,7 +631,9 @@ class TrendChartGenerator:
                                       proyecciones_df: pd.DataFrame,
                                       ventas_por_ciudad_df: pd.DataFrame,
                                       proyecciones_por_ciudad_df: pd.DataFrame,
-                                      sop_oruro_trinidad_df: pd.DataFrame = None) -> Dict:
+                                      sop_oruro_trinidad_df: pd.DataFrame = None,
+                                      override_py_gerente_total: float = None,
+                                      override_sop_total: float = None) -> Dict:
         """
         Procesar datos semanales para vista general y por ciudad (solo BOB)
 
@@ -616,6 +643,8 @@ class TrendChartGenerator:
             ventas_por_ciudad_df: DataFrame con ventas semanales por ciudad
             proyecciones_por_ciudad_df: DataFrame con proyecciones por ciudad
             sop_oruro_trinidad_df: DataFrame con SOP mensual de Oruro y Trinidad
+            override_py_gerente_total: Total PY Gerente mensual desde marca_totales (override, solo general)
+            override_sop_total: Total SOP mensual desde marca_totales (override, solo general)
 
         Returns:
             Diccionario con datos procesados para todas las ciudades
@@ -623,9 +652,11 @@ class TrendChartGenerator:
         try:
             result = {}
 
-            # 1. Procesar datos generales (vista actual)
+            # 1. Procesar datos generales (vista actual) con overrides de marca_totales
             general_data = self.process_weekly_data(
-                ventas_df, proyecciones_df, sop_oruro_trinidad_df
+                ventas_df, proyecciones_df, sop_oruro_trinidad_df,
+                override_py_gerente_total=override_py_gerente_total,
+                override_sop_total=override_sop_total
             )
             result['general'] = general_data
 
