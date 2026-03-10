@@ -80,8 +80,12 @@ def run_validation():
     # --- Connect ---
     try:
         db = DatabaseManager(db_config, schema)
+        if not db.connect():
+            print("ERROR: Cannot connect to database.")
+            print("Ensure VPN is active and .env is configured correctly.")
+            sys.exit(1)
         # Quick connectivity check
-        test_df = db.execute_query(f"SELECT 1 AS test")
+        test_df = db.execute_query("SELECT 1 AS test")
         if test_df.empty:
             print("ERROR: Database connectivity test failed (empty result).")
             sys.exit(1)
