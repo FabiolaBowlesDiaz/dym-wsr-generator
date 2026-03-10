@@ -653,6 +653,28 @@ class WSRGeneratorSystem:
 
                 # Gráfica histórica
                 historico_nacional = projection_data.get('historico_nacional', {})
+
+                # Override current month PY Gerente and SOP with marca_totales values
+                # historico_nacional queries fact_proyecciones/factpresupuesto directly,
+                # which produces different totals than marca_totales (the authoritative source)
+                py_ger_hist = historico_nacional.get('py_gerente_nacional', pd.DataFrame())
+                if not py_ger_hist.empty and py_gerente_nacional > 0:
+                    mask = (py_ger_hist['anio'].astype(int) == self.current_year) & \
+                           (py_ger_hist['mes'].astype(int) == self.current_month)
+                    if mask.any():
+                        old_val = float(py_ger_hist.loc[mask, 'py_gerente_bob'].iloc[0])
+                        py_ger_hist.loc[mask, 'py_gerente_bob'] = py_gerente_nacional
+                        logger.info(f"Chart PY Gerente override: {old_val:,.0f} -> {py_gerente_nacional:,.0f} (marca_totales)")
+
+                sop_hist = historico_nacional.get('sop_nacional', pd.DataFrame())
+                if not sop_hist.empty and sop_nacional > 0:
+                    mask = (sop_hist['anio'].astype(int) == self.current_year) & \
+                           (sop_hist['mes'].astype(int) == self.current_month)
+                    if mask.any():
+                        old_val = float(sop_hist.loc[mask, 'sop_bob'].iloc[0])
+                        sop_hist.loc[mask, 'sop_bob'] = sop_nacional
+                        logger.info(f"Chart SOP override: {old_val:,.0f} -> {sop_nacional:,.0f} (marca_totales)")
+
                 chart_html = proj_chart_gen.generate_historical_chart(
                     historico_nacional,
                     py_sistema_nacional=py_sistema_nacional,
