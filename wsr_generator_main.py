@@ -683,13 +683,37 @@ class WSRGeneratorSystem:
                     current_month=self.current_month
                 )
 
-                # Sección completa
+                # Calcular totales nacionales C9L del mes actual
+                avance_col_c9l = f'avance_{self.current_year}_c9l'
+                avance_nacional_c9l = marca_totales[avance_col_c9l].sum() if avance_col_c9l in marca_totales.columns else 0
+                sop_nacional_c9l = marca_totales['sop_c9l'].sum() if 'sop_c9l' in marca_totales.columns else 0
+                py_gerente_c9l_col = f'py_{self.current_year}_c9l'
+                py_gerente_nacional_c9l = marca_totales[py_gerente_c9l_col].sum() if py_gerente_c9l_col in marca_totales.columns else 0
+                py_sistema_nacional_c9l = marca_totales['py_sistema_c9l'].sum() if 'py_sistema_c9l' in marca_totales.columns else 0
+
+                # Grafico C9L
+                chart_html_c9l = proj_chart_gen.generate_historical_chart_c9l(
+                    historico_nacional,
+                    py_sistema_c9l=py_sistema_nacional_c9l,
+                    avance_c9l=avance_nacional_c9l,
+                    py_gerente_c9l=py_gerente_nacional_c9l,
+                    sop_c9l=sop_nacional_c9l,
+                    current_year=self.current_year,
+                    current_month=self.current_month
+                )
+
+                # Seccion completa (BOB + C9L)
                 projection_html = proj_html_gen.generate_full_section(
                     chart_html=chart_html,
                     sop_nacional=sop_nacional,
                     py_gerente_nacional=py_gerente_nacional,
                     py_sistema_nacional=py_sistema_nacional,
-                    avance_nacional=avance_nacional
+                    avance_nacional=avance_nacional,
+                    chart_html_c9l=chart_html_c9l,
+                    sop_nacional_c9l=sop_nacional_c9l,
+                    py_gerente_nacional_c9l=py_gerente_nacional_c9l,
+                    py_sistema_nacional_c9l=py_sistema_nacional_c9l,
+                    avance_nacional_c9l=avance_nacional_c9l
                 )
             except Exception as e:
                 logger.warning(f"Error generando HTML de Resumen Ejecutivo: {e}")

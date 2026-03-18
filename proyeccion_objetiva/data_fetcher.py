@@ -414,6 +414,133 @@ class ProjectionDataFetcher:
         return self.db.execute_query(query)
 
     # ------------------------------------------------------------------
+    # Query 7: Ventas reales mensuales NACIONALES (12m, para gráfica ejecutiva)
+    # ------------------------------------------------------------------
+    def get_ventas_nacionales_historicas(self, months_back: int = 12) -> pd.DataFrame:
+        """
+        Ventas reales mensuales a nivel nacional (SUM de todas las marcas/ciudades).
+        Para la gráfica histórica de la Sección 4 (Resumen Ejecutivo).
+
+        Returns:
+            DataFrame con: anio, mes, venta_bob, venta_c9l
+        """
+        excluded_cities = ", ".join(f"'{c}'" for c in cfg.EXCLUDED_CITIES)
+        excluded_channels = ", ".join(f"'{c}'" for c in cfg.EXCLUDED_CHANNELS)
+        excluded_brands = ", ".join(f"'{b}'" for b in cfg.EXCLUDED_BRANDS)
+
+        query = f"""
+        SELECT
+            anio,
+            mes,
+            SUM(CAST(fin_01_ingreso AS NUMERIC)) AS venta_bob,
+            SUM(CAST(c9l AS NUMERIC)) AS venta_c9l
+        FROM {self.schema}.{cfg.TABLE_VENTAS_HISTORICO}
+        WHERE (anio * 12 + mes) >= (
+                EXTRACT(YEAR FROM CURRENT_DATE)::INT * 12
+                + EXTRACT(MONTH FROM CURRENT_DATE)::INT
+                - {months_back}
+              )
+          AND UPPER(ciudad) NOT IN ({excluded_cities})
+          AND UPPER(canal) NOT IN ({excluded_channels})
+          AND UPPER(marcadir) NOT IN ({excluded_brands})
+        GROUP BY anio, mes
+        ORDER BY anio, mes
+        """
+        return self.db.execute_query(query)
+
+    # ------------------------------------------------------------------
+    # Query 8: SOP mensual NACIONAL (12m, para gráfica ejecutiva)
+    # ------------------------------------------------------------------
+    def get_sop_nacional_historico(self, months_back: int = 12) -> pd.DataFrame:
+        """
+        SOP (presupuesto mensual) a nivel nacional.
+
+        Returns:
+            DataFrame con: anio, mes, sop_bob
+        """
+        excluded_cities = ", ".join(f"'{c}'" for c in cfg.EXCLUDED_CITIES)
+        excluded_channels = ", ".join(f"'{c}'" for c in cfg.EXCLUDED_CHANNELS)
+        excluded_brands = ", ".join(f"'{b}'" for b in cfg.EXCLUDED_BRANDS)
+
+        query = f"""
+        SELECT
+            EXTRACT(YEAR FROM CAST(tiempo_key AS DATE))::INT AS anio,
+            EXTRACT(MONTH FROM CAST(tiempo_key AS DATE))::INT AS mes,
+            SUM(CAST(ingreso_neto_sus AS NUMERIC)) AS sop_bob
+        FROM {self.schema}.{cfg.TABLE_PRESUPUESTO_MENSUAL}
+        WHERE (EXTRACT(YEAR FROM CAST(tiempo_key AS DATE))::INT * 12
+               + EXTRACT(MONTH FROM CAST(tiempo_key AS DATE))::INT) >= (
+                EXTRACT(YEAR FROM CURRENT_DATE)::INT * 12
+                + EXTRACT(MONTH FROM CURRENT_DATE)::INT
+                - {months_back}
+              )
+          AND UPPER(ciudad) NOT IN ({excluded_cities})
+          AND UPPER(canal) NOT IN ({excluded_channels})
+          AND UPPER(marcadirectorio) NOT IN ({excluded_brands})
+        GROUP BY EXTRACT(YEAR FROM CAST(tiempo_key AS DATE))::INT,
+                 EXTRACT(MONTH FROM CAST(tiempo_key AS DATE))::INT
+        ORDER BY anio, mes
+        """
+        return self.db.execute_query(query)
+
+    # ------------------------------------------------------------------
+    # Query 9: PY Gerente mensual NACIONAL histórico (para gráfica ejecutiva)
+    # ------------------------------------------------------------------
+    def get_py_gerente_nacional_historico(self, months_back: int = 12) -> pd.DataFrame:
+        """
+        PY Gerente histórico a nivel nacional (SUM de todas las semanas por mes).
+        Solo los meses donde hubo proyecciones ingresadas.
+
+        Returns:
+            DataFrame con: anio, mes, py_gerente_bob
+        """
+        query = f"""
+        SELECT
+            anio_proyeccion AS anio,
+            mes_proyeccion AS mes,
+            SUM(
+                CASE WHEN moneda = 'USD' THEN
+                    (COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
+                     COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
+                     COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
+                     COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
+                     COALESCE(CAST(total_semana5 AS NUMERIC), 0)) * {cfg.TIPO_CAMBIO}
+                ELSE
+                    COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
+                    COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
+                    COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
+                    COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
+                    COALESCE(CAST(total_semana5 AS NUMERIC), 0)
+                END
+            ) AS py_gerente_bob
+        FROM {self.schema}.{cfg.TABLE_PROYECCIONES}
+        WHERE (anio_proyeccion * 12 + mes_proyeccion) >= (
+                EXTRACT(YEAR FROM CURRENT_DATE)::INT * 12
+                + EXTRACT(MONTH FROM CURRENT_DATE)::INT
+                - {months_back}
+              )
+          AND UPPER(ciudad) != 'TURISMO'
+        GROUP BY anio_proyeccion, mes_proyeccion
+        HAVING SUM(
+            CASE WHEN moneda = 'USD' THEN
+                (COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
+                 COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
+                 COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
+                 COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
+                 COALESCE(CAST(total_semana5 AS NUMERIC), 0)) * {cfg.TIPO_CAMBIO}
+            ELSE
+                COALESCE(CAST(total_semana1 AS NUMERIC), 0) +
+                COALESCE(CAST(total_semana2 AS NUMERIC), 0) +
+                COALESCE(CAST(total_semana3 AS NUMERIC), 0) +
+                COALESCE(CAST(total_semana4 AS NUMERIC), 0) +
+                COALESCE(CAST(total_semana5 AS NUMERIC), 0)
+            END
+        ) > 0
+        ORDER BY anio, mes
+        """
+        return self.db.execute_query(query)
+
+    # ------------------------------------------------------------------
     # Método maestro: obtener todos los datos
     # ------------------------------------------------------------------
     def fetch_all(self, months_back_components: int = 24,
@@ -457,6 +584,19 @@ class ProjectionDataFetcher:
         ventas_canal = self.get_ventas_historicas_canal(months_back_historico)
         logger.info(f"    → {len(ventas_canal)} registros de ventas por canal")
 
+        # Datos para gráfica ejecutiva (Sección 4)
+        logger.info("  • Ventas nacionales históricas (12m)...")
+        ventas_nacionales = self.get_ventas_nacionales_historicas(12)
+        logger.info(f"    → {len(ventas_nacionales)} meses de ventas nacionales")
+
+        logger.info("  • SOP nacional histórico (12m)...")
+        sop_nacional = self.get_sop_nacional_historico(12)
+        logger.info(f"    → {len(sop_nacional)} meses de SOP")
+
+        logger.info("  • PY Gerente nacional histórico...")
+        py_gerente_hist = self.get_py_gerente_nacional_historico(12)
+        logger.info(f"    → {len(py_gerente_hist)} meses de PY Gerente")
+
         return {
             'cobertura': cobertura,
             'dropsize': dropsize,
@@ -464,5 +604,8 @@ class ProjectionDataFetcher:
             'ventas_historicas': ventas,
             'ventas_historicas_subfamilia': ventas_subfam,
             'ventas_historicas_canal': ventas_canal,
-            'schema_validation': schema_info
+            'schema_validation': schema_info,
+            'ventas_nacionales': ventas_nacionales,
+            'sop_nacional': sop_nacional,
+            'py_gerente_nacional': py_gerente_hist,
         }
