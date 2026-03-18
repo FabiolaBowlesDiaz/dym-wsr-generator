@@ -58,9 +58,9 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 1 of 2 (Data Integrity)
 Plan: 0 of ? in current phase
 Status: Ready to plan
-Last activity: 2026-03-09 -- Roadmap created
+Last activity: 2026-03-18 - Completed quick task 1: WSR adjustments (C9L chart + signals table + HR line chart)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -107,6 +107,12 @@ None yet.
 ### Blockers/Concerns
 
 None yet.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | WSR adjustments: C9L chart + signals table columns + HR/Eficiencia line chart | 2026-03-18 | aac2075 | [1-wsr-adjustments-c9l-chart-signals-table-](./quick/1-wsr-adjustments-c9l-chart-signals-table-/) |
 
 ## Session Continuity
 
