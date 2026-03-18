@@ -5,6 +5,7 @@ Genera el reporte HTML completo con estilos y formato
 
 import pandas as pd
 import numpy as np
+import json
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime, date
 import calendar
@@ -937,64 +938,117 @@ class HTMLGenerator:
         return html
 
     def _generate_hitrate_chart(self, df: pd.DataFrame) -> str:
-        """Generar gráfico de barras de Hit Rate y Eficiencia"""
+        """Generar grafico Chart.js de lineas para Hit Rate y Eficiencia"""
         if df.empty:
             return ""
 
-        max_value = max(df['hit_rate'].max(), df['eficiencia'].max(), 100)
+        labels = [row['mes'][:3].upper() for _, row in df.iterrows()]
+        hr_data = [round(row['hit_rate'], 1) for _, row in df.iterrows()]
+        ef_data = [round(row['eficiencia'], 1) for _, row in df.iterrows()]
 
-        html = """
+        labels_json = json.dumps(labels, ensure_ascii=False)
+        hr_json = json.dumps(hr_data)
+        ef_json = json.dumps(ef_data)
+
+        # Max Y slightly above 100 or data max
+        max_y = max(max(hr_data + ef_data, default=100), 100) * 1.05
+
+        return f"""
         <div style="margin: 30px 0; background: #f9fafb; padding: 20px; border-radius: 8px;">
-            <h4 style="margin-bottom: 20px;">Evolución Hit Rate vs Eficiencia</h4>
-            <div style="display: flex; gap: 20px; margin-bottom: 15px;">
-                <span style="display: flex; align-items: center;"><span style="width: 20px; height: 12px; background: #3b82f6; margin-right: 5px; border-radius: 2px;"></span>Hit Rate</span>
-                <span style="display: flex; align-items: center;"><span style="width: 20px; height: 12px; background: #10b981; margin-right: 5px; border-radius: 2px;"></span>Eficiencia</span>
-            </div>
-            <div style="display: flex;">
-                <div style="width: 100px; display: flex; flex-direction: column; justify-content: space-between; padding-right: 10px;">
-        """
-
-        # Add month labels on Y-axis
-        for idx, row in df.iterrows():
-            html += f"""<div style="height: 40px; display: flex; align-items: center; font-size: 11px; font-weight: 500;">{row['mes'][:3]}</div>"""
-
-        html += """
-                </div>
-                <div style="flex: 1; display: flex; flex-direction: column;">
-        """
-
-        for idx, row in df.iterrows():
-            hr_width = (row['hit_rate'] / max_value) * 100
-            ef_width = (row['eficiencia'] / max_value) * 100
-
-            html += f"""
-            <div style="height: 40px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-bottom: 1px solid #e5e7eb;">
-                <div style="display: flex; align-items: center;">
-                    <div style="background: #3b82f6; height: 15px; width: {hr_width}%; border-radius: 2px; position: relative; min-width: 45px;">
-                        <span style="position: absolute; right: 3px; color: white; font-size: 10px; line-height: 15px; font-weight: 500;">{row['hit_rate']:.1f}%</span>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center;">
-                    <div style="background: #10b981; height: 15px; width: {ef_width}%; border-radius: 2px; position: relative; min-width: 45px;">
-                        <span style="position: absolute; right: 3px; color: white; font-size: 10px; line-height: 15px; font-weight: 500;">{row['eficiencia']:.1f}%</span>
-                    </div>
-                </div>
-            </div>
-            """
-
-        html += """
-                </div>
-            </div>
-            <div style="margin-top: 10px; display: flex; justify-content: space-between; padding-left: 110px; font-size: 10px; color: #6b7280;">
-                <span>0%</span>
-                <span>25%</span>
-                <span>50%</span>
-                <span>75%</span>
-                <span>100%</span>
+            <h4 style="margin-bottom: 15px; color: #1e3a8a; font-size: 13px;">
+                Evolucion Hit Rate vs Eficiencia
+            </h4>
+            <div style="position: relative; height: 300px; width: 100%;">
+                <canvas id="hitRateEficienciaChart"></canvas>
             </div>
         </div>
+        <script>
+        (function() {{
+            var ctx = document.getElementById('hitRateEficienciaChart');
+            if (!ctx) return;
+
+            new Chart(ctx, {{
+                type: 'line',
+                data: {{
+                    labels: {labels_json},
+                    datasets: [
+                        {{
+                            label: 'Hit Rate',
+                            data: {hr_json},
+                            borderColor: '#3b82f6',
+                            backgroundColor: '#3b82f6',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            fill: false
+                        }},
+                        {{
+                            label: 'Eficiencia',
+                            data: {ef_json},
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b981',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            fill: false
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        mode: 'index',
+                        intersect: false
+                    }},
+                    plugins: {{
+                        legend: {{
+                            position: 'top',
+                            labels: {{
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {{ size: 11 }}
+                            }}
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            max: {max_y:.0f},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value + '%';
+                                }},
+                                font: {{ size: 10 }}
+                            }},
+                            grid: {{
+                                color: '#e5e7eb'
+                            }}
+                        }},
+                        x: {{
+                            ticks: {{
+                                font: {{ size: 10, weight: '500' }},
+                                maxRotation: 0
+                            }},
+                            grid: {{
+                                display: false
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        }})();
+        </script>
         """
-        return html
 
     def _generate_hitrate_ciudad_table(self, df: pd.DataFrame) -> str:
         """Generar tabla de Hit Rate por ciudad"""
