@@ -282,21 +282,25 @@ class StatisticalEngine:
                 'error': str(e)
             }
 
-    def run_by_marca(self, ventas_df: pd.DataFrame) -> pd.DataFrame:
+    def run_by_marca(self, ventas_df: pd.DataFrame, value_col: str = 'venta_bob') -> pd.DataFrame:
         """
         Ejecuta forecast estadístico para todas las marcas.
 
         Adaptado del patrón de exp_smoothing_predict_groups() en helper_functions.py.
 
         Args:
-            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob)
+            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob/venta_c9l)
+            value_col: Columna de valor a proyectar (default: 'venta_bob')
 
         Returns:
-            DataFrame con (marcadir, py_estadistica_bob, model_type, confidence, n_months)
+            DataFrame con (marcadir, py_estadistica_{suffix}, model_type, confidence, n_months)
         """
+        suffix = value_col.replace('venta_', '')  # 'bob' o 'c9l'
+        py_col = f'py_estadistica_{suffix}'
+
         # Agregar a nivel marca (sumar todas las ciudades)
         marca_mensual = (ventas_df
-                         .groupby(['marcadir', 'anio', 'mes'])['venta_bob']
+                         .groupby(['marcadir', 'anio', 'mes'])[value_col]
                          .sum()
                          .reset_index())
 
@@ -305,12 +309,12 @@ class StatisticalEngine:
 
         for marca in marcas:
             marca_data = marca_mensual[marca_mensual['marcadir'] == marca].copy()
-            series = self._df_to_monthly_series(marca_data, 'venta_bob')
+            series = self._df_to_monthly_series(marca_data, value_col)
 
             if series is None:
                 results.append({
                     'marcadir': marca,
-                    'py_estadistica_bob': None,
+                    py_col: None,
                     'model_type': None,
                     'confidence': None,
                     'n_months': 0
@@ -320,7 +324,7 @@ class StatisticalEngine:
             result = self.forecast_single_series(series)
             row = {
                 'marcadir': marca,
-                'py_estadistica_bob': result['forecast'],
+                py_col: result['forecast'],
                 'model_type': result['model_type'],
                 'confidence': result['confidence'],
                 'n_months': result['n_months']
@@ -329,24 +333,28 @@ class StatisticalEngine:
             if result.get('event_adjustment'):
                 row['event_adjustment'] = result['event_adjustment']['explanation']
                 row['event_factor'] = result['event_adjustment']['factor']
-                row['py_estadistica_bob_raw'] = result.get('forecast_raw')
+                row[f'{py_col}_raw'] = result.get('forecast_raw')
             results.append(row)
 
         return pd.DataFrame(results)
 
-    def run_by_ciudad(self, ventas_df: pd.DataFrame) -> pd.DataFrame:
+    def run_by_ciudad(self, ventas_df: pd.DataFrame, value_col: str = 'venta_bob') -> pd.DataFrame:
         """
         Ejecuta forecast estadístico para todas las ciudades.
 
         Args:
-            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob)
+            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob/venta_c9l)
+            value_col: Columna de valor a proyectar (default: 'venta_bob')
 
         Returns:
-            DataFrame con (ciudad, py_estadistica_bob, model_type, confidence, n_months)
+            DataFrame con (ciudad, py_estadistica_{suffix}, model_type, confidence, n_months)
         """
+        suffix = value_col.replace('venta_', '')
+        py_col = f'py_estadistica_{suffix}'
+
         # Agregar a nivel ciudad (sumar todas las marcas)
         ciudad_mensual = (ventas_df
-                          .groupby(['ciudad', 'anio', 'mes'])['venta_bob']
+                          .groupby(['ciudad', 'anio', 'mes'])[value_col]
                           .sum()
                           .reset_index())
 
@@ -355,12 +363,12 @@ class StatisticalEngine:
 
         for ciudad in ciudades:
             ciudad_data = ciudad_mensual[ciudad_mensual['ciudad'] == ciudad].copy()
-            series = self._df_to_monthly_series(ciudad_data, 'venta_bob')
+            series = self._df_to_monthly_series(ciudad_data, value_col)
 
             if series is None:
                 results.append({
                     'ciudad': ciudad,
-                    'py_estadistica_bob': None,
+                    py_col: None,
                     'model_type': None,
                     'confidence': None,
                     'n_months': 0
@@ -370,7 +378,7 @@ class StatisticalEngine:
             result = self.forecast_single_series(series)
             row = {
                 'ciudad': ciudad,
-                'py_estadistica_bob': result['forecast'],
+                py_col: result['forecast'],
                 'model_type': result['model_type'],
                 'confidence': result['confidence'],
                 'n_months': result['n_months']
@@ -379,28 +387,32 @@ class StatisticalEngine:
             if result.get('event_adjustment'):
                 row['event_adjustment'] = result['event_adjustment']['explanation']
                 row['event_factor'] = result['event_adjustment']['factor']
-                row['py_estadistica_bob_raw'] = result.get('forecast_raw')
+                row[f'{py_col}_raw'] = result.get('forecast_raw')
             results.append(row)
 
         return pd.DataFrame(results)
 
-    def run_by_subfamilia(self, ventas_subfam_df: pd.DataFrame) -> pd.DataFrame:
+    def run_by_subfamilia(self, ventas_subfam_df: pd.DataFrame, value_col: str = 'venta_bob') -> pd.DataFrame:
         """
         Ejecuta forecast estadístico para cada par (marca, subfamilia).
 
         Args:
-            ventas_subfam_df: DataFrame con (marcadir, subfamilia, anio, mes, venta_bob)
+            ventas_subfam_df: DataFrame con (marcadir, subfamilia, anio, mes, venta_bob/venta_c9l)
+            value_col: Columna de valor a proyectar (default: 'venta_bob')
 
         Returns:
-            DataFrame con (marcadir, subfamilia, py_estadistica_bob, model_type, confidence, n_months)
+            DataFrame con (marcadir, subfamilia, py_estadistica_{suffix}, model_type, confidence, n_months)
         """
+        suffix = value_col.replace('venta_', '')
+        py_col = f'py_estadistica_{suffix}'
+
         if ventas_subfam_df.empty:
-            return pd.DataFrame(columns=['marcadir', 'subfamilia', 'py_estadistica_bob',
+            return pd.DataFrame(columns=['marcadir', 'subfamilia', py_col,
                                          'model_type', 'confidence', 'n_months'])
 
         # Aggregate to ensure one row per (marcadir, subfamilia, anio, mes)
         agg_df = (ventas_subfam_df
-                  .groupby(['marcadir', 'subfamilia', 'anio', 'mes'])['venta_bob']
+                  .groupby(['marcadir', 'subfamilia', 'anio', 'mes'])[value_col]
                   .sum()
                   .reset_index())
 
@@ -408,13 +420,13 @@ class StatisticalEngine:
         groups = agg_df.groupby(['marcadir', 'subfamilia'])
 
         for (marca, subfam), group_data in groups:
-            series = self._df_to_monthly_series(group_data, 'venta_bob')
+            series = self._df_to_monthly_series(group_data, value_col)
 
             if series is None:
                 results.append({
                     'marcadir': marca,
                     'subfamilia': subfam,
-                    'py_estadistica_bob': None,
+                    py_col: None,
                     'model_type': None,
                     'confidence': None,
                     'n_months': 0
@@ -425,7 +437,7 @@ class StatisticalEngine:
             row = {
                 'marcadir': marca,
                 'subfamilia': subfam,
-                'py_estadistica_bob': result['forecast'],
+                py_col: result['forecast'],
                 'model_type': result['model_type'],
                 'confidence': result['confidence'],
                 'n_months': result['n_months']
@@ -433,23 +445,27 @@ class StatisticalEngine:
             if result.get('event_adjustment'):
                 row['event_adjustment'] = result['event_adjustment']['explanation']
                 row['event_factor'] = result['event_adjustment']['factor']
-                row['py_estadistica_bob_raw'] = result.get('forecast_raw')
+                row[f'{py_col}_raw'] = result.get('forecast_raw')
             results.append(row)
 
         return pd.DataFrame(results)
 
-    def run_by_canal(self, ventas_canal_df: pd.DataFrame) -> pd.DataFrame:
+    def run_by_canal(self, ventas_canal_df: pd.DataFrame, value_col: str = 'venta_bob') -> pd.DataFrame:
         """
         Ejecuta forecast estadístico para cada canal.
 
         Args:
-            ventas_canal_df: DataFrame con (canal, anio, mes, venta_bob)
+            ventas_canal_df: DataFrame con (canal, anio, mes, venta_bob/venta_c9l)
+            value_col: Columna de valor a proyectar (default: 'venta_bob')
 
         Returns:
-            DataFrame con (canal, py_estadistica_bob, model_type, confidence, n_months)
+            DataFrame con (canal, py_estadistica_{suffix}, model_type, confidence, n_months)
         """
+        suffix = value_col.replace('venta_', '')
+        py_col = f'py_estadistica_{suffix}'
+
         if ventas_canal_df.empty:
-            return pd.DataFrame(columns=['canal', 'py_estadistica_bob',
+            return pd.DataFrame(columns=['canal', py_col,
                                          'model_type', 'confidence', 'n_months'])
 
         results = []
@@ -457,12 +473,12 @@ class StatisticalEngine:
 
         for canal in canales:
             canal_data = ventas_canal_df[ventas_canal_df['canal'] == canal].copy()
-            series = self._df_to_monthly_series(canal_data, 'venta_bob')
+            series = self._df_to_monthly_series(canal_data, value_col)
 
             if series is None:
                 results.append({
                     'canal': canal,
-                    'py_estadistica_bob': None,
+                    py_col: None,
                     'model_type': None,
                     'confidence': None,
                     'n_months': 0
@@ -472,7 +488,7 @@ class StatisticalEngine:
             result = self.forecast_single_series(series)
             row = {
                 'canal': canal,
-                'py_estadistica_bob': result['forecast'],
+                py_col: result['forecast'],
                 'model_type': result['model_type'],
                 'confidence': result['confidence'],
                 'n_months': result['n_months']
@@ -480,37 +496,41 @@ class StatisticalEngine:
             if result.get('event_adjustment'):
                 row['event_adjustment'] = result['event_adjustment']['explanation']
                 row['event_factor'] = result['event_adjustment']['factor']
-                row['py_estadistica_bob_raw'] = result.get('forecast_raw')
+                row[f'{py_col}_raw'] = result.get('forecast_raw')
             results.append(row)
 
         return pd.DataFrame(results)
 
-    def run_by_ciudad_marca(self, ventas_df: pd.DataFrame) -> pd.DataFrame:
+    def run_by_ciudad_marca(self, ventas_df: pd.DataFrame, value_col: str = 'venta_bob') -> pd.DataFrame:
         """
         Ejecuta forecast estadístico para cada par (ciudad, marca).
         Usa los datos de Query 4 que ya vienen a nivel marcadir × ciudad.
 
         Args:
-            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob)
+            ventas_df: DataFrame con (marcadir, ciudad, anio, mes, venta_bob/venta_c9l)
+            value_col: Columna de valor a proyectar (default: 'venta_bob')
 
         Returns:
-            DataFrame con (ciudad, marcadir, py_estadistica_bob, model_type, confidence, n_months)
+            DataFrame con (ciudad, marcadir, py_estadistica_{suffix}, model_type, confidence, n_months)
         """
+        suffix = value_col.replace('venta_', '')
+        py_col = f'py_estadistica_{suffix}'
+
         if ventas_df.empty:
-            return pd.DataFrame(columns=['ciudad', 'marcadir', 'py_estadistica_bob',
+            return pd.DataFrame(columns=['ciudad', 'marcadir', py_col,
                                          'model_type', 'confidence', 'n_months'])
 
         results = []
         groups = ventas_df.groupby(['ciudad', 'marcadir'])
 
         for (ciudad, marca), group_data in groups:
-            series = self._df_to_monthly_series(group_data, 'venta_bob')
+            series = self._df_to_monthly_series(group_data, value_col)
 
             if series is None:
                 results.append({
                     'ciudad': ciudad,
                     'marcadir': marca,
-                    'py_estadistica_bob': None,
+                    py_col: None,
                     'model_type': None,
                     'confidence': None,
                     'n_months': 0
@@ -521,7 +541,7 @@ class StatisticalEngine:
             row = {
                 'ciudad': ciudad,
                 'marcadir': marca,
-                'py_estadistica_bob': result['forecast'],
+                py_col: result['forecast'],
                 'model_type': result['model_type'],
                 'confidence': result['confidence'],
                 'n_months': result['n_months']
@@ -529,7 +549,7 @@ class StatisticalEngine:
             if result.get('event_adjustment'):
                 row['event_adjustment'] = result['event_adjustment']['explanation']
                 row['event_factor'] = result['event_adjustment']['factor']
-                row['py_estadistica_bob_raw'] = result.get('forecast_raw')
+                row[f'{py_col}_raw'] = result.get('forecast_raw')
             results.append(row)
 
         return pd.DataFrame(results)

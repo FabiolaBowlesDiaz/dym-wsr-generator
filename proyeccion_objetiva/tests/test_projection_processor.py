@@ -227,23 +227,21 @@ class TestResiliencia:
     """Tests de resiliencia: el WSR debe funcionar aunque el módulo falle."""
 
     def test_empty_data_handled(self):
-        """DataFrames vacíos no causan excepciones."""
-        from proyeccion_objetiva.pilar3_operativa.decomposition_engine import RevenueTreeEngine
+        """DriversEngine diagnose_trend con estable retorna Estable."""
+        from proyeccion_objetiva.pilar3_operativa.drivers_engine import DriversEngine
 
-        engine = RevenueTreeEngine()
-        result = engine.run_by_ciudad(
-            pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        )
-        assert isinstance(result, pd.DataFrame)
-        assert result.empty
+        result = DriversEngine.diagnose_trend(0.01, 0.01, 0.01)
+        assert result == "Estable"
 
-    def test_none_series_handled(self):
-        """Series None son manejadas sin excepción."""
-        from proyeccion_objetiva.pilar3_operativa.decomposition_engine import RevenueTreeEngine
+    def test_diagnose_trend_handles_none(self):
+        """DriversEngine.diagnose_trend con None retorna datos insuficientes."""
+        from proyeccion_objetiva.pilar3_operativa.drivers_engine import DriversEngine
 
-        engine = RevenueTreeEngine()
-        result = engine.project_component(None)
-        assert result['sufficient_data'] is False
+        result = DriversEngine.diagnose_trend(None, 0.01, -0.05)
+        assert result == "Datos insuficientes"
+
+        result2 = DriversEngine.diagnose_trend(-0.05, 0.01, 0.0)
+        assert result2 == "Problema de ruta/cobertura"
 
     def test_html_generator_with_empty_data(self):
         """HTML generator con datos vacíos no causa excepciones."""

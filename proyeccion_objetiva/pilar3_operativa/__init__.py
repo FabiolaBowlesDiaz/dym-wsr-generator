@@ -1,9 +1,10 @@
 """
-Pilar 3: PY Operativa — Revenue Tree
-Proyecta ventas como: Venta = Cobertura x Hit Rate x Drop Size
-Cada componente se proyecta independientemente con WMA + estacionalidad.
+Pilar 3: PY Operativa — Drivers de Performance (Revenue Tree)
+Descompone ventas en: Venta = Cobertura x Hit Rate x Drop Size
+Fuente: fact_ventas_detallado (DWH)
 """
 
-from .decomposition_engine import RevenueTreeEngine
+from .drivers_engine import DriversEngine
+from .drivers_narrative import DriversNarrativeGenerator
 
-__all__ = ['RevenueTreeEngine']
+__all__ = ['DriversEngine', 'DriversNarrativeGenerator']

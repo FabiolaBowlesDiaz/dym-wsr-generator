@@ -85,3 +85,16 @@ TIPO_CAMBIO = 6.96  # BOB/USD (consistente con WSR)
 
 # === VISIBILIDAD DE SECCIONES ===
 SHOW_ACCURACY_SECTION = False  # Set to True to show "Accuracy de la proyeccion comercial" in the WSR
+
+# === FILTRO DE MARCAS POR STOCK EN ALMACENES ===
+# Solo marcas con stock disponible en estos almacenes aparecen en el WSR
+STOCK_WAREHOUSE_COLUMN = 'nom_alm'
+STOCK_VALID_WAREHOUSES = [
+    'Bodega El Alto', 'Central CBB', 'Central LPZ', 'Central ORU',
+    'Central POT', 'Central SCZ', 'Central SRE', 'Central TJA',
+    'Central TRI', 'Tienda - 15 de abril', 'Tienda - 7to anillo',
+    'Tienda - Conteiner, SCZ', 'Tienda - Ladislao Cabrera',
+    'Tienda - Las Palmas', 'Tienda - Miraflores', 'Tienda - San Pedro',
+    'Transito Nacional Virtual',
+]
+STOCK_MIN_C9L = 1.0  # Umbral mínimo en C9L para considerar que una marca tiene stock vendible

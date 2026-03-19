@@ -23,6 +23,7 @@ from core.data_processor import DataProcessor
 from core.html_generator import HTMLGenerator
 from core.trend_chart_generator import TrendChartGenerator
 from utils.html_tables import HTMLTableGenerator
+from proyeccion_objetiva import config as cfg
 
 # Módulo de Proyección Objetiva (nuevo)
 try:
@@ -108,6 +109,25 @@ class WSRGeneratorSystem:
                 data['marca'], data['marca_subfamilia']
             )
             marcas_df = estructura_marca['marca_totales']
+
+            # Filtrar marcas sin stock en almacenes válidos
+            marcas_con_stock = self.db_manager.get_marcas_con_stock_en_almacenes(
+                cfg.STOCK_WAREHOUSE_COLUMN, cfg.STOCK_VALID_WAREHOUSES, cfg.STOCK_MIN_C9L
+            )
+            if marcas_con_stock:
+                before_count = len(marcas_df)
+                estructura_marca['marca_totales'] = marcas_df[
+                    marcas_df['marcadir'].str.upper().isin(marcas_con_stock)
+                ]
+                if 'marca_subfamilia' in estructura_marca and estructura_marca['marca_subfamilia'] is not None:
+                    estructura_marca['marca_subfamilia'] = estructura_marca['marca_subfamilia'][
+                        estructura_marca['marca_subfamilia']['marcadir'].str.upper().isin(marcas_con_stock)
+                    ]
+                marcas_df = estructura_marca['marca_totales']
+                after_count = len(marcas_df)
+                logger.info(f"📦 Stock filter: {before_count} → {after_count} brands (filtered by {len(cfg.STOCK_VALID_WAREHOUSES)} warehouses)")
+            else:
+                logger.warning("⚠️ Stock filter: no brands returned from warehouse query — skipping filter to avoid empty report")
 
             # Consolidar datos con estructura jerárquica para ciudades
             estructura_ciudad = self.data_processor.consolidate_ciudad_marca_data(
@@ -846,6 +866,9 @@ class WSRGeneratorSystem:
                 <li><strong>Tipo de cambio</strong>: 6.96 BOB/USD para conversion de proyecciones.</li>
                 <li><strong>Cobertura de stock</strong>: Calculada con base en venta promedio diaria ultimos {self.current_day} dias.</li>
                 <li><strong>Ciudades sin gerente</strong>: {"Trinidad usa" if self.current_year >= 2026 else "Oruro y Trinidad usan"} presupuesto mensual como proyeccion.</li>
+                <li><strong>Filtro de marcas por stock</strong>: Solo se incluyen marcas con stock disponible &ge; {cfg.STOCK_MIN_C9L:.0f} C9L
+                    en los siguientes almacenes: {', '.join(cfg.STOCK_VALID_WAREHOUSES)}.
+                    Marcas sin stock vendible en estos almacenes no aparecen en el reporte.</li>
                 <li><strong>Exclusiones</strong>: Ciudad/Canal Turismo y marcas "Ninguna"/"Sin marca asignada".</li>
                 <li><strong>Datos actualizados al</strong>: {self.current_date.strftime('%d/%m/%Y %H:%M')}.</li>
             </ul>

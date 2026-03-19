@@ -271,13 +271,13 @@ class ProjectionChartGenerator:
         Genera grafico de lineas C9L con 4 series: Venta Real, SOP, PY Gerente, PY Sistema.
         Identical structure to generate_historical_chart() but uses C9L data.
 
-        For C9L, historical SOP and PY Gerente may not be available from the DB queries.
         - Venta Real C9L: full historical from venta_c9l column in ventas_nacionales
-        - SOP C9L: only current month (single point from sop_c9l parameter)
-        - PY Gerente C9L: only current month (single point from py_gerente_c9l parameter)
+        - SOP C9L: full historical from sop_c9l column in sop_nacional
+        - PY Gerente C9L: only current month (fact_proyecciones has no c9l column)
         - PY Sistema C9L: only current month (single point from py_sistema_c9l parameter)
         """
         ventas_df = historico_nacional.get('ventas_nacionales', pd.DataFrame())
+        sop_df = historico_nacional.get('sop_nacional', pd.DataFrame())
 
         if ventas_df.empty or 'venta_c9l' not in ventas_df.columns:
             return ""
@@ -308,13 +308,14 @@ class ProjectionChartGenerator:
                 val = avance_c9l
             venta_data.append(round(val, 0) if val is not None else None)
 
-        # SOP C9L: only current month point
-        sop_data = [None] * len(all_months)
-        for i, (a, m) in enumerate(all_months):
-            if a == current_year and m == current_month and sop_c9l > 0:
-                sop_data[i] = round(sop_c9l, 0)
+        # SOP C9L: full historical line from sop_nacional (same as BOB chart)
+        sop_map = {(int(r['anio']), int(r['mes'])): float(r['sop_c9l'])
+                   for _, r in sop_df.iterrows()
+                   if not sop_df.empty and 'sop_c9l' in sop_df.columns and pd.notna(r.get('sop_c9l'))} if not sop_df.empty and 'sop_c9l' in sop_df.columns else {}
+        sop_data = [round(sop_map.get((a, m), None) or 0, 0) if sop_map.get((a, m)) else None
+                    for a, m in all_months]
 
-        # PY Gerente C9L: only current month point
+        # PY Gerente C9L: only current month point (fact_proyecciones has no c9l)
         py_ger_data = [None] * len(all_months)
         for i, (a, m) in enumerate(all_months):
             if a == current_year and m == current_month and py_gerente_c9l > 0:
@@ -378,13 +379,13 @@ class ProjectionChartGenerator:
                             data: {sop_json},
                             borderColor: '{cfg.COLOR_SOP}',
                             backgroundColor: '{cfg.COLOR_SOP}',
-                            borderWidth: 0,
-                            pointRadius: 7,
-                            pointHoverRadius: 9,
-                            pointStyle: 'triangle',
+                            borderWidth: 1.5,
+                            borderDash: [6, 4],
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
                             fill: false,
-                            showLine: false,
-                            spanGaps: false,
+                            spanGaps: true,
                             order: 3
                         }},
                         {{

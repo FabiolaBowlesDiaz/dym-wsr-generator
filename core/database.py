@@ -449,6 +449,26 @@ class DatabaseManager:
         """
         return self.execute_query(query)
     
+    def get_marcas_con_stock_en_almacenes(self, warehouse_column: str, warehouses: list, min_c9l: float = 1.0) -> set:
+        """Obtener set de marcas con stock >= min_c9l en almacenes específicos.
+
+        Returns set of brand names (uppercase) or empty set if query fails.
+        """
+        placeholders = ', '.join(f"'{w}'" for w in warehouses)
+        query = f"""
+        SELECT
+            UPPER(marcadirectorio) as marca
+        FROM {self.schema}.td_stock_sap
+        WHERE {warehouse_column} IN ({placeholders})
+            AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY UPPER(marcadirectorio)
+        HAVING SUM(CAST(disponible AS NUMERIC) * CAST(volumen AS NUMERIC) / 9) >= {min_c9l}
+        """
+        df = self.execute_query(query)
+        if df is None or df.empty:
+            return set()
+        return set(df['marca'].str.upper())
+
     def get_ventas_semanales_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
         """Obtener ventas semanales por marca (SEMANAS CALENDARIO)"""
         weeks = self.get_calendar_week_ranges(year, month)

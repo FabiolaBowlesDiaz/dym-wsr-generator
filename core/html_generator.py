@@ -265,6 +265,7 @@ class HTMLGenerator:
         {projection_css}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
     <div class="container">
@@ -969,6 +970,7 @@ class HTMLGenerator:
 
             new Chart(ctx, {{
                 type: 'line',
+                plugins: [ChartDataLabels],
                 data: {{
                     labels: {labels_json},
                     datasets: [
@@ -1004,6 +1006,18 @@ class HTMLGenerator:
                         intersect: false
                     }},
                     plugins: {{
+                        datalabels: {{
+                            display: true,
+                            align: 'top',
+                            offset: 6,
+                            font: {{ size: 11, weight: '600' }},
+                            formatter: function(value) {{
+                                return value.toFixed(1) + '%';
+                            }},
+                            color: function(context) {{
+                                return context.dataset.borderColor;
+                            }}
+                        }},
                         legend: {{
                             position: 'top',
                             labels: {{

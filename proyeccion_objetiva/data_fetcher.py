@@ -466,7 +466,8 @@ class ProjectionDataFetcher:
         SELECT
             EXTRACT(YEAR FROM CAST(tiempo_key AS DATE))::INT AS anio,
             EXTRACT(MONTH FROM CAST(tiempo_key AS DATE))::INT AS mes,
-            SUM(CAST(ingreso_neto_sus AS NUMERIC)) AS sop_bob
+            SUM(CAST(ingreso_neto_sus AS NUMERIC)) AS sop_bob,
+            SUM(CAST(c9l AS NUMERIC)) AS sop_c9l
         FROM {self.schema}.{cfg.TABLE_PRESUPUESTO_MENSUAL}
         WHERE (EXTRACT(YEAR FROM CAST(tiempo_key AS DATE))::INT * 12
                + EXTRACT(MONTH FROM CAST(tiempo_key AS DATE))::INT) >= (

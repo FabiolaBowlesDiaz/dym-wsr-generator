@@ -32,7 +32,9 @@ wsr_generator_main.py          ← Orquestador principal
 │   │   ├── statistical_engine.py  ← Holt-Winters (Triple/Double Exp Smoothing)
 │   │   └── event_calendar.py      ← Ajuste por Carnaval/Semana Santa
 │   ├── pilar3_operativa/
-│   │   └── decomposition_engine.py ← Cobertura × Hit Rate × Drop Size
+│   │   ├── drivers_engine.py      ← Motor: Cob × HR × DS desde fact_ventas_detallado
+│   │   ├── drivers_narrative.py   ← Narrativa IA diagnostico operativo (Claude)
+│   │   └── DRIVERS.md             ← Documentación completa del pilar
 │   └── visualizacion/
 │       ├── projection_chart_generator.py ← Gráfico comparativo Chart.js
 │       └── projection_html_generator.py  ← Sección HTML de proyecciones
@@ -56,6 +58,7 @@ wsr_generator_main.py          ← Orquestador principal
 | `FactVentas` | Ventas granulares por cliente (cobertura, drop size) |
 | `fact_eficiencia_hitrate` | Hit rate y eficiencia por ciudad |
 | `fact_proyecciones` | PY Gerente ingresada por gerentes comerciales |
+| `fact_ventas_detallado` | Ventas item-level con cod_cliente + cuf_factura (schema `auto`) — fuente Drivers |
 
 ### Dato crítico del DWH
 - `td_ventas_bob_historico` se actualiza durante el día (ETL incremental)
