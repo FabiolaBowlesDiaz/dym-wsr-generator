@@ -56,8 +56,8 @@ DB_SCHEMA=conexion_auto
 # Configuración de OpenRouter (opcional)
 OPENROUTER_API_KEY=tu_api_key_aqui
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-DEFAULT_MODEL=anthropic/claude-opus-4.1
-FALLBACK_MODEL=anthropic/claude-sonnet-4
+DEFAULT_MODEL=anthropic/claude-opus-4.6
+FALLBACK_MODEL=anthropic/claude-sonnet-4.6
 
 # Configuración de logging
 LOG_LEVEL=INFO

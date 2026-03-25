@@ -31,8 +31,8 @@ class CommentProcessor:
         self.base_url = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
 
         # Usar el modelo por defecto o el modelo fallback si está configurado
-        self.model = os.getenv('DEFAULT_MODEL', 'anthropic/claude-opus-4.1')
-        self.fallback_model = os.getenv('FALLBACK_MODEL', 'anthropic/claude-sonnet-4')
+        self.model = os.getenv('DEFAULT_MODEL', 'anthropic/claude-opus-4.6')
+        self.fallback_model = os.getenv('FALLBACK_MODEL', 'anthropic/claude-sonnet-4.6')
 
         if not self.api_key:
             logger.warning("No se encontró API key de OpenRouter. Usando procesamiento básico.")

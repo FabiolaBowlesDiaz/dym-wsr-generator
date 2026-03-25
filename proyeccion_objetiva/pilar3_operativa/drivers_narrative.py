@@ -27,7 +27,7 @@ class DriversNarrativeGenerator:
         self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
         self.base_url = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
         self.model = model or os.getenv('DEFAULT_MODEL', 'anthropic/claude-opus-4.6')
-        self.fallback_model = os.getenv('FALLBACK_MODEL', 'anthropic/claude-sonnet-4')
+        self.fallback_model = os.getenv('FALLBACK_MODEL', 'anthropic/claude-sonnet-4.6')
 
     def generate_diagnostic(
         self,
