@@ -980,23 +980,29 @@ class HTMLTableGenerator:
         if level == "marca":
             by_marca = drivers_data.get('by_marca')
             if by_marca is not None and not by_marca.empty:
-                # Filtrar a marcas del WSR si se proporciona lista
                 if valid_marcas:
                     valid_upper = {m.upper() for m in valid_marcas}
                     by_marca = by_marca[by_marca['marca'].str.upper().isin(valid_upper)].copy()
-                # Parsear narrativa IA por marca para insertar inline
                 marca_narratives = self._parse_narrative_per_marca(narrative_html) if narrative_html else {}
+                # Drill-down: marca → ciudad
+                detail_df = drivers_data.get('by_ciudad_marca')
+                if detail_df is not None and not detail_df.empty and valid_marcas:
+                    detail_df = detail_df[detail_df['marca'].str.upper().isin(valid_upper)].copy()
                 html += self._generate_drivers_table(
                     by_marca, "DRIVERS DE PERFORMANCE POR MARCA", "Marca", "marca",
-                    marca_narratives=marca_narratives
+                    marca_narratives=marca_narratives,
+                    detail_df=detail_df, detail_sub_col='ciudad'
                 )
         elif level == "ciudad":
             by_ciudad = drivers_data.get('by_ciudad')
             if by_ciudad is not None and not by_ciudad.empty:
                 ciudad_narratives = self._parse_narrative_per_marca(narrative_html) if narrative_html else {}
+                # Drill-down: ciudad → canal
+                detail_df = drivers_data.get('by_ciudad_canal')
                 html += self._generate_drivers_table(
                     by_ciudad, "DRIVERS DE PERFORMANCE POR CIUDAD", "Ciudad", "ciudad",
-                    marca_narratives=ciudad_narratives
+                    marca_narratives=ciudad_narratives,
+                    detail_df=detail_df, detail_sub_col='canal'
                 )
         elif level == "canal":
             by_canal = drivers_data.get('by_canal')
@@ -1037,19 +1043,19 @@ class HTMLTableGenerator:
     @staticmethod
     def _generate_driver_insight(row) -> str:
         """Genera insight programático basado en datos para una marca/ciudad."""
-        cob_t = row.get('cobertura_trend')
+        cob_t = row.get('cobertura_real_trend')
         hr_t = row.get('hitrate_trend')
         ds_t = row.get('dropsize_trend')
-        cob = row.get('cobertura', 0)
+        cob_real = row.get('cobertura_real', 0)
+        efect = row.get('efectividad_pct', None)
         hr = row.get('hit_rate', 0)
         ds = row.get('drop_size', 0)
         sufficient = row.get('sufficient_data', False)
 
         if not sufficient:
-            venta_est = cob * hr * ds if cob and hr and ds else 0
-            venta_str = f"Bs{venta_est:,.0f}" if venta_est else "-"
-            return (f"Perfil: {int(cob)} clientes, frecuencia {hr:.2f} ped/cli, "
-                    f"ticket Bs{ds:,.0f}/ped. Venta implicita: {venta_str}. "
+            efect_str = f"{efect:.1f}%" if efect is not None else "-"
+            return (f"Perfil: {int(cob_real)} cli padre, efectividad {efect_str}, "
+                    f"frecuencia {hr:.2f} ped/cli, ticket Bs{ds:,.0f}/ped. "
                     f"Sin dato VSLY para comparacion interanual.")
 
         def classify(t):
@@ -1063,15 +1069,15 @@ class HTMLTableGenerator:
         c, h, d = classify(cob_t), classify(hr_t), classify(ds_t)
 
         parts = []
-        # Cobertura
+        # Cobertura real
         if c == 'nd':
-            parts.append(f"Cob {int(cob)} cli (sin dato VSLY)")
+            parts.append(f"Cob {int(cob_real)} cli (sin dato VSLY)")
         elif 'sube' in c:
-            parts.append(f"Cob crece VSLY ({cob_t:+.1%}, {int(cob)} cli)")
+            parts.append(f"Cob crece VSLY ({cob_t:+.1%}, {int(cob_real)} cli)")
         elif 'baja' in c:
-            parts.append(f"Cob cae VSLY ({cob_t:+.1%}, {int(cob)} cli)")
+            parts.append(f"Cob cae VSLY ({cob_t:+.1%}, {int(cob_real)} cli)")
         else:
-            parts.append(f"Cob estable VSLY ({int(cob)} cli)")
+            parts.append(f"Cob estable VSLY ({int(cob_real)} cli)")
         # Hit Rate
         if h == 'nd':
             parts.append(f"HR {hr:.2f} (sin dato VSLY)")
@@ -1122,8 +1128,11 @@ class HTMLTableGenerator:
         return f"{line1} {line2}"
 
     def _generate_drivers_table(self, df, title: str, key_label: str, key_col: str,
-                                marca_narratives: dict = None) -> str:
-        """Genera tabla HTML de drivers con tendencias YoY y resumen ejecutivo inline."""
+                                marca_narratives: dict = None,
+                                detail_df=None, detail_sub_col: str = None) -> str:
+        """Genera tabla HTML de drivers con tendencias YoY, resumen ejecutivo inline, y drill-down opcional."""
+
+        has_drilldown = detail_df is not None and not detail_df.empty and detail_sub_col
 
         # Extraer periodo de referencia del DataFrame
         meses_nombre = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -1149,44 +1158,39 @@ class HTMLTableGenerator:
             periodo_yoy = "Mismo mes año anterior"
             metodo_str = ""
 
+        # Unique table ID for CSS scoping
+        table_id = f"drivers-{key_col}"
+
         html = f"""
         <div style="margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
             <h3 style="margin: 0 0 4px 0; color: #1e293b; font-size: 15px;">
                 {title}
             </h3>
             <p style="margin: 0 0 6px 0; color: #64748b; font-size: 11px;">
-                Venta = Cobertura &times; Frecuencia &times; Drop Size &nbsp;|&nbsp;
                 Periodo: <strong>{periodo_str}</strong> &nbsp;|&nbsp; vs <strong>{periodo_yoy}</strong>
             </p>
             <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 10px; line-height: 1.5;">
-                <strong>Cob (cli)</strong> = COUNT(DISTINCT clientes) que compraron en el periodo &nbsp;|&nbsp;
+                <strong>Cobertura (cli)</strong> = clientes padre unicos &nbsp;|&nbsp;
+                <strong>Efectividad (%)</strong> = facturas de la entidad / total facturas &times; 100 &nbsp;|&nbsp;
                 <strong>Freq.</strong> = pedidos / clientes — frecuencia de compra &nbsp;|&nbsp;
-                <strong>DS (BOB)</strong> = SUM(venta) / pedidos — ticket promedio por pedido &nbsp;|&nbsp;
-                <strong>&Delta; VSLY</strong> = variacion % vs mismo periodo año anterior (Versus Last Year)
+                <strong>DS (Ing. Neto BOB)</strong> = ingreso neto / pedidos — ticket promedio
                 {f'&nbsp;|&nbsp; <em>{metodo_str}</em>' if metodo_str else ''}
             </p>
             <div style="overflow-x: auto;">
-            <table style="font-size: 11px; table-layout: fixed; width: 100%;">
-                <colgroup>
-                    <col style="width: 95px;">
-                    <col style="width: 52px;">
-                    <col style="width: 62px;">
-                    <col style="width: 40px;">
-                    <col style="width: 62px;">
-                    <col style="width: 62px;">
-                    <col style="width: 62px;">
-                    <col>
-                </colgroup>
+            <table id="{table_id}" style="font-size: 11px; width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr>
-                        <th>{key_label}</th>
-                        <th>Cob (cli)</th>
-                        <th>&Delta; VSLY</th>
-                        <th>Freq.</th>
-                        <th>&Delta; VSLY</th>
-                        <th>DS (BOB)</th>
-                        <th>&Delta; VSLY</th>
-                        <th>Resumen Ejecutivo</th>
+                        {'<th style="width: 28px;"></th>' if has_drilldown else ''}
+                        <th style="width: 85px; text-align: left;">{key_label}</th>
+                        <th style="width: 45px;">Cob<br>(cli)</th>
+                        <th style="width: 62px;">&Delta; VSLY</th>
+                        <th style="width: 52px;">Efect.<br>(%)</th>
+                        <th style="width: 62px;">&Delta; VSLY</th>
+                        <th style="width: 38px;">Freq.</th>
+                        <th style="width: 62px;">&Delta; VSLY</th>
+                        <th style="width: 72px;">DS<br>(Ing.Neto)</th>
+                        <th style="width: 62px;">&Delta; VSLY</th>
+                        <th style="min-width: 200px;">Resumen Ejecutivo</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1198,24 +1202,28 @@ class HTMLTableGenerator:
         for _, row in df.iterrows():
             key_value = row.get(key_col, '?')
             display_name = str(key_value).title() if str(key_value).isupper() else str(key_value)
+            entity_id = str(key_value).replace(' ', '_').replace('.', '').replace(',', '')
 
-            cob = row.get('cobertura', 0)
+            cob_real = row.get('cobertura_real', 0)
+            efect = row.get('efectividad_pct', None)
             hr = row.get('hit_rate', 0)
             ds = row.get('drop_size', 0)
-            cob_t = row.get('cobertura_trend', None)
+            cob_real_t = row.get('cobertura_real_trend', None)
+            efect_t = row.get('efectividad_trend', None)
             hr_t = row.get('hitrate_trend', None)
             ds_t = row.get('dropsize_trend', None)
 
-            cob_str = f"{int(cob):,}" if cob else "-"
+            cob_real_str = f"{int(cob_real):,}" if cob_real else "-"
+            efect_str = f"{efect:.1f}%" if efect is not None else "-"
             hr_str = f"{hr:.2f}" if hr else "-"
             ds_str = self.gen.format_number(ds) if ds else "-"
 
-            cob_t_str = self._format_trend(cob_t)
+            cob_real_t_str = self._format_trend(cob_real_t)
+            efect_t_str = self._format_trend(efect_t)
             hr_t_str = self._format_trend(hr_t)
             ds_t_str = self._format_trend(ds_t)
 
             # Resumen: IA narrative si existe, sino insight programático
-            # Fuzzy match: exact → startswith → contains (LLM puede escribir "Beefeater" pero DB tiene "BEEFEATEAR")
             marca_upper = str(key_value).upper()
             ai_text = marca_narratives.get(marca_upper, '')
             if not ai_text:
@@ -1226,16 +1234,30 @@ class HTMLTableGenerator:
                     if narr_key in marca_upper or marca_upper in narr_key:
                         ai_text = narr_val
                         break
-            if ai_text:
-                resumen = ai_text
-            else:
-                resumen = self._generate_driver_insight(row)
+            resumen = ai_text if ai_text else self._generate_driver_insight(row)
+
+            # Check if this entity has drill-down children
+            has_children = False
+            if has_drilldown:
+                children = detail_df[detail_df[key_col].astype(str).str.upper() == str(key_value).upper()]
+                has_children = not children.empty
+
+            # Expand button
+            expand_td = ""
+            if has_drilldown:
+                if has_children:
+                    expand_td = f'<td style="text-align: center;"><span class="drv-expand" onclick="toggleDriverSub(\'{entity_id}\')" style="cursor:pointer; color:#2563eb; font-weight:bold; user-select:none;">[+]</span></td>'
+                else:
+                    expand_td = '<td></td>'
 
             html += f"""
-                <tr>
+                <tr style="font-weight: 500;">
+                    {expand_td}
                     <td><strong>{display_name}</strong></td>
-                    <td class="text-right">{cob_str}</td>
-                    <td class="text-right">{cob_t_str}</td>
+                    <td class="text-right">{cob_real_str}</td>
+                    <td class="text-right">{cob_real_t_str}</td>
+                    <td class="text-right">{efect_str}</td>
+                    <td class="text-right">{efect_t_str}</td>
                     <td class="text-right">{hr_str}</td>
                     <td class="text-right">{hr_t_str}</td>
                     <td class="text-right">{ds_str}</td>
@@ -1244,10 +1266,67 @@ class HTMLTableGenerator:
                 </tr>
             """
 
+            # Drill-down sub-rows (hidden by default)
+            if has_drilldown and has_children:
+                children_sorted = children.sort_values('venta_total', ascending=False)
+                for _, sub in children_sorted.iterrows():
+                    sub_name = str(sub.get(detail_sub_col, '?'))
+                    sub_name_display = sub_name.title() if sub_name.isupper() else sub_name
+
+                    s_cob_real = sub.get('cobertura_real', 0)
+                    s_efect = sub.get('efectividad_pct', None)
+                    s_hr = sub.get('hit_rate', 0)
+                    s_ds = sub.get('drop_size', 0)
+
+                    s_cob_real_str = f"{int(s_cob_real):,}" if s_cob_real else "-"
+                    s_efect_str = f"{s_efect:.1f}%" if s_efect is not None else "-"
+                    s_hr_str = f"{s_hr:.2f}" if s_hr else "-"
+                    s_ds_str = self.gen.format_number(s_ds) if s_ds else "-"
+
+                    s_cob_real_t_str = self._format_trend(sub.get('cobertura_real_trend'))
+                    s_efect_t_str = self._format_trend(sub.get('efectividad_trend'))
+                    s_hr_t_str = self._format_trend(sub.get('hitrate_trend'))
+                    s_ds_t_str = self._format_trend(sub.get('dropsize_trend'))
+
+                    html += f"""
+                <tr class="drv-sub-{entity_id}" style="display: none; background-color: #f8f9fa; font-size: 0.95em;">
+                    <td></td>
+                    <td style="padding-left: 20px; color: #64748b;">&boxur;&nbsp;{sub_name_display}</td>
+                    <td class="text-right">{s_cob_real_str}</td>
+                    <td class="text-right">{s_cob_real_t_str}</td>
+                    <td class="text-right">{s_efect_str}</td>
+                    <td class="text-right">{s_efect_t_str}</td>
+                    <td class="text-right">{s_hr_str}</td>
+                    <td class="text-right">{s_hr_t_str}</td>
+                    <td class="text-right">{s_ds_str}</td>
+                    <td class="text-right">{s_ds_t_str}</td>
+                    <td></td>
+                </tr>
+                    """
+
         html += """
                 </tbody>
             </table>
             </div>
+        """
+
+        # Toggle JavaScript (only if drill-down is present)
+        if has_drilldown:
+            html += """
+            <script>
+            function toggleDriverSub(entityId) {
+                var rows = document.querySelectorAll('.drv-sub-' + entityId);
+                var icon = event.target;
+                var isExpanded = icon.textContent === '[-]';
+                rows.forEach(function(row) {
+                    row.style.display = isExpanded ? 'none' : 'table-row';
+                });
+                icon.textContent = isExpanded ? '[+]' : '[-]';
+            }
+            </script>
+            """
+
+        html += """
         </div>
         """
         return html
@@ -1268,7 +1347,15 @@ class HTMLTableGenerator:
             color = "#64748b"
             arrow = "&#9654;"  # ▶ (stable)
 
-        return f'<span style="color: {color}; font-weight: 600;">{arrow} {pct:+.1f}%</span>'
+        # Truncar extremos para evitar desborde de celda
+        if pct > 999:
+            pct_str = ">999%"
+        elif pct < -999:
+            pct_str = "<-999%"
+        else:
+            pct_str = f"{pct:+.1f}%"
+
+        return f'<span style="color: {color}; font-weight: 600; white-space: nowrap;">{arrow} {pct_str}</span>'
 
     def _get_diag_color(self, diag: str) -> str:
         """Color para el texto de diagnostico."""

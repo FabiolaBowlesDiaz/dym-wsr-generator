@@ -156,31 +156,35 @@ class DriversNarrativeGenerator:
         """Construye tabla markdown con drivers."""
         key_label = {'marca': 'Marca', 'ciudad': 'Ciudad', 'canal': 'Canal'}.get(key_col, key_col.title())
         lines = [
-            f"| {key_label} | Cobertura (cli) | Δ VSLY Cob | Frecuencia (ped/cli) | Δ VSLY Freq | Drop Size (BOB/ped) | Δ VSLY DS | Diagnostico Auto |"
+            f"| {key_label} | Cob (cli padre) | Δ VSLY Cob | Efectividad (%) | Δ VSLY Efect | Freq (ped/cli) | Δ VSLY Freq | DS Ing.Neto (BOB/ped) | Δ VSLY DS | Diagnostico Auto |"
         ]
-        lines.append("|-------|----------------|-----------|-------------------|---------|--------------------|---------|--------------------|")
+        lines.append("|-------|----------------|-----------|----------------|-------------|---------------|---------|----------------------|---------|--------------------|")
 
         for _, row in df.iterrows():
             marca = row.get(key_col, '?')
-            cob = row.get('cobertura', 0)
-            cob_t = row.get('cobertura_trend', None)
+            cob_real = row.get('cobertura_real', 0)
+            cob_real_t = row.get('cobertura_real_trend', None)
+            efect = row.get('efectividad_pct', None)
+            efect_t = row.get('efectividad_trend', None)
             hr = row.get('hit_rate', 0)
             hr_t = row.get('hitrate_trend', None)
             ds = row.get('drop_size', 0)
             ds_t = row.get('dropsize_trend', None)
 
-            cob_str = f"{int(cob):,}" if cob else "-"
+            cob_real_str = f"{int(cob_real):,}" if cob_real else "-"
+            efect_str = f"{efect:.1f}%" if efect is not None else "-"
             hr_str = f"{hr:.2f}" if hr else "-"
             ds_str = f"${ds:,.0f}" if ds else "-"
 
-            cob_t_str = f"{cob_t:+.1%}" if cob_t is not None else "-"
+            cob_real_t_str = f"{cob_real_t:+.1%}" if cob_real_t is not None else "-"
+            efect_t_str = f"{efect_t:+.1%}" if efect_t is not None else "-"
             hr_t_str = f"{hr_t:+.1%}" if hr_t is not None else "-"
             ds_t_str = f"{ds_t:+.1%}" if ds_t is not None else "-"
 
-            diag = DriversEngine.diagnose_trend(cob_t, hr_t, ds_t)
+            diag = DriversEngine.diagnose_trend(cob_real_t, hr_t, ds_t)
 
             lines.append(
-                f"| {marca} | {cob_str} | {cob_t_str} | {hr_str} | {hr_t_str} | {ds_str} | {ds_t_str} | {diag} |"
+                f"| {marca} | {cob_real_str} | {cob_real_t_str} | {efect_str} | {efect_t_str} | {hr_str} | {hr_t_str} | {ds_str} | {ds_t_str} | {diag} |"
             )
 
         return "\n".join(lines)
@@ -235,12 +239,12 @@ DRIVERS DE PERFORMANCE POR {entity_upper} — Same-to-Date (STD): {mes_nombre} {
 {detail_md}
 
 DEFINICIONES:
-- **Cobertura (cli)**: COUNT(DISTINCT clientes) que compraron en el periodo. Mide el ALCANCE de la fuerza de ventas.
+- **Cobertura (cli padre)**: COUNT(DISTINCT clientes padre) que compraron en el periodo. Mide el ALCANCE real de la fuerza de ventas (agrupa sub-codigos bajo el cliente padre).
+- **Efectividad (%)**: Facturas de la entidad / total facturas x 100. Mide la PARTICIPACION en ordenes. Puede sumar >100% porque una factura puede contener multiples marcas.
 - **Frecuencia (ped/cli)**: Pedidos / clientes — cuantas veces compra cada cliente. Mide la FRECUENCIA de compra.
-- **Drop Size (BOB/ped)**: SUM(venta) / pedidos — venta promedio por pedido. Mide el TICKET PROMEDIO.
-- **Formula**: Venta = Cobertura x Frecuencia x Drop Size (multiplicacion exacta).
+- **Drop Size (Ing. Neto BOB/ped)**: SUM(ingreso_neto) / pedidos — ingreso neto promedio por pedido. Mide el TICKET PROMEDIO.
 - **Δ VSLY** (Versus Last Year): Variacion porcentual vs mismo periodo del año anterior. Positivo = mejorando, negativo = deteriorando.
-- Si una {entity} no tiene Δ VSLY (muestra "-"), analiza su perfil absoluto: tamaño de cobertura, frecuencia vs promedio, ticket vs promedio.{context_extra}
+- Si una {entity} no tiene Δ VSLY (muestra "-"), analiza su perfil absoluto: cobertura, efectividad, frecuencia y ticket vs promedio.{context_extra}
 
 LOGICA DE DIAGNOSTICO:
 | Cobertura | Frecuencia | Drop Size | Diagnostico |

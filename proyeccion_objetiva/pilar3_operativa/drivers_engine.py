@@ -3,17 +3,20 @@ Drivers Engine - Revenue Tree Decomposition
 Venta = Cobertura x Hit Rate x Drop Size
 
 Fuente: fact_ventas_detallado (DWH)
-Calcula los 3 drivers operativos a 4 niveles:
+Calcula los drivers operativos a 7 niveles:
   1. Por marca (nacional)
   2. Por marca + submarca (drilldown)
   3. Por ciudad
   4. Por ciudad + marca (drilldown)
+  5. Por canal
+  6. Por canal + subcanal (drilldown)
+  7. Por ciudad + canal (drilldown)
 
-Definiciones (Option A - Frecuencia):
-  Cobertura = COUNT(DISTINCT cod_cliente)          -- clientes unicos que compraron
-  Hit Rate  = COUNT(DISTINCT cuf_factura) / Cob    -- pedidos por cliente (frecuencia)
-  Drop Size = SUM(ingreso_neto_bob) / pedidos      -- BOB por pedido (ticket)
-  Check: Cob x HR x DS = Venta total (exacto)
+Definiciones:
+  Cobertura (cli) = COUNT(DISTINCT itemname_padre)          -- clientes padre unicos
+  Efectividad (%) = pedidos_entidad / pedidos_totales x 100 -- share de facturas
+  Frecuencia      = COUNT(DISTINCT cuf_factura) / COUNT(DISTINCT cod_cliente)
+  Drop Size       = SUM(ingreso_neto_bob) / pedidos         -- ticket promedio (ingreso neto)
 """
 
 import pandas as pd
@@ -63,6 +66,7 @@ class DriversEngine:
             EXTRACT(YEAR FROM fecha)::INT AS anio,
             EXTRACT(MONTH FROM fecha)::INT AS mes,
             COUNT(DISTINCT cod_cliente) AS cobertura,
+            COUNT(DISTINCT itemname_padre) AS cobertura_real,
             COUNT(DISTINCT cuf_factura) AS pedidos,
             ROUND(
                 COUNT(DISTINCT cuf_factura)::NUMERIC /
@@ -108,6 +112,7 @@ class DriversEngine:
         SELECT
             {group_sql},
             COUNT(DISTINCT cod_cliente) AS cobertura,
+            COUNT(DISTINCT itemname_padre) AS cobertura_real,
             COUNT(DISTINCT cuf_factura) AS pedidos,
             ROUND(
                 COUNT(DISTINCT cuf_factura)::NUMERIC /
@@ -137,6 +142,103 @@ class DriversEngine:
         except Exception as e:
             logger.error(f"[Drivers STD] Error: {e}")
             return pd.DataFrame()
+
+    # ==================================================================
+    # Efectividad: totales para denominador
+    # ==================================================================
+
+    @staticmethod
+    def _get_totals_group(group_cols: List[str]) -> Optional[List[str]]:
+        """Determina las columnas de agrupacion para los totales de efectividad.
+
+        El denominador de efectividad depende del nivel:
+        - Nivel simple (marca, ciudad, canal): total nacional (None)
+        - Nivel drill-down (ciudad+marca): total del padre (ciudad)
+        """
+        TOTALS_MAP = {
+            ('marca',): None,
+            ('ciudad',): None,
+            ('canal_on_of',): None,
+            ('marca', 'submarca'): ['marca'],
+            ('ciudad', 'marca'): ['ciudad'],
+            ('ciudad', 'canal_on_of'): ['ciudad'],
+            ('canal_on_of', 'subcanal'): ['canal_on_of'],
+        }
+        return TOTALS_MAP.get(tuple(group_cols), None)
+
+    def _build_totals_query(self, start_date: str, end_date: str,
+                            group_cols: Optional[List[str]] = None) -> str:
+        """Query para obtener totales de pedidos y cobertura_real (denominador de efectividad)."""
+        excluded_brands_sql = ", ".join(f"'{b}'" for b in EXCLUDED_BRANDS)
+        excluded_cities_sql = ", ".join(f"'{c}'" for c in EXCLUDED_CITIES)
+
+        if group_cols:
+            group_sql = ", ".join(group_cols)
+            select_group = f"{group_sql},"
+            group_by = f"GROUP BY {group_sql}"
+        else:
+            select_group = ""
+            group_by = ""
+
+        return f"""
+        SELECT
+            {select_group}
+            COUNT(DISTINCT cuf_factura) AS total_pedidos,
+            COUNT(DISTINCT itemname_padre) AS total_cobertura_real
+        FROM {self.schema}.{TABLE_VENTAS_DETALLADO}
+        WHERE UPPER(marca) NOT IN ({excluded_brands_sql})
+          AND UPPER(ciudad) NOT IN ({excluded_cities_sql})
+          AND fecha >= '{start_date}'
+          AND fecha <= '{end_date}'
+        {group_by}
+        """
+
+    def _get_period_totals(self, start_date: str, end_date: str,
+                           group_cols: Optional[List[str]] = None):
+        """Obtiene totales de pedidos para calcular efectividad.
+
+        Returns:
+            Si group_cols=None: dict con {'total_pedidos': int, 'total_cobertura_real': int}
+            Si group_cols: DataFrame con group_cols + total_pedidos + total_cobertura_real
+        """
+        query = self._build_totals_query(start_date, end_date, group_cols)
+        try:
+            df = self.db.execute_query(query)
+            if group_cols is None:
+                if df.empty:
+                    return {'total_pedidos': 0, 'total_cobertura_real': 0}
+                return {
+                    'total_pedidos': int(df.iloc[0]['total_pedidos']),
+                    'total_cobertura_real': int(df.iloc[0]['total_cobertura_real']),
+                }
+            return df
+        except Exception as e:
+            logger.error(f"[Drivers] Error obteniendo totales: {e}")
+            if group_cols is None:
+                return {'total_pedidos': 0, 'total_cobertura_real': 0}
+            return pd.DataFrame()
+
+    def _lookup_total_pedidos(self, totals, totals_group_cols, row):
+        """Busca total_pedidos para una fila.
+
+        Args:
+            totals: dict (nacional) o DataFrame (agrupado por totals_group_cols)
+            totals_group_cols: None para nacional, list de columnas para agrupado
+            row: fila del DataFrame principal para hacer match
+        """
+        if isinstance(totals, dict):
+            return totals.get('total_pedidos', 0)
+        if isinstance(totals, pd.DataFrame) and not totals.empty:
+            if totals_group_cols is None:
+                return int(totals.iloc[0]['total_pedidos'])
+            mask = pd.Series([True] * len(totals))
+            for col in totals_group_cols:
+                if col in totals.columns and col in row.index:
+                    mask = mask & (totals[col].astype(str).str.upper() == str(row[col]).upper())
+            matched = totals[mask]
+            if not matched.empty:
+                return int(matched.iloc[0]['total_pedidos'])
+        return 0
 
     def _compute_std(self, group_cols: List[str]) -> pd.DataFrame:
         """
@@ -171,6 +273,11 @@ class DriversEngine:
 
         df_yoy = self._fetch_std_period(group_cols, yoy_start, yoy_end)
 
+        # Totales para efectividad (denominador)
+        totals_group = self._get_totals_group(group_cols)
+        totals_current = self._get_period_totals(current_start, current_end, totals_group)
+        totals_yoy = self._get_period_totals(yoy_start, yoy_end, totals_group)
+
         # Merge current + YoY por las columnas clave
         if not df_yoy.empty:
             merged = df_current.merge(df_yoy, on=group_cols, how='left', suffixes=('', '_yoy'))
@@ -182,30 +289,52 @@ class DriversEngine:
             key_values = {col: row[col] for col in group_cols}
 
             cob = float(row['cobertura'])
+            cob_real = float(row.get('cobertura_real', 0))
+            pedidos = float(row.get('pedidos', 0))
             hr = float(row['hit_rate'])
             ds = float(row['drop_size'])
             venta = float(row['venta_total'])
 
-            cob_trend = hr_trend = ds_trend = None
+            # Efectividad: pedidos de esta entidad / pedidos totales × 100
+            total_ped = self._lookup_total_pedidos(totals_current, totals_group, row)
+            efectividad_pct = round(pedidos / total_ped * 100, 1) if total_ped > 0 else None
+
+            cob_trend = cob_real_trend = hr_trend = ds_trend = efect_trend = None
             has_yoy = 'cobertura_yoy' in row.index and pd.notna(row.get('cobertura_yoy'))
 
             if has_yoy:
                 cob_yoy = float(row['cobertura_yoy'])
+                cob_real_yoy = float(row.get('cobertura_real_yoy', 0))
+                pedidos_yoy = float(row.get('pedidos_yoy', 0))
                 hr_yoy = float(row['hit_rate_yoy'])
                 ds_yoy = float(row['drop_size_yoy'])
+
                 if cob_yoy > 0:
                     cob_trend = (cob / cob_yoy) - 1
+                if cob_real_yoy > 0:
+                    cob_real_trend = (cob_real / cob_real_yoy) - 1
                 if hr_yoy > 0:
                     hr_trend = (hr / hr_yoy) - 1
                 if ds_yoy > 0:
                     ds_trend = (ds / ds_yoy) - 1
 
+                # Efectividad YoY
+                total_ped_yoy = self._lookup_total_pedidos(totals_yoy, totals_group, row)
+                efect_yoy = (pedidos_yoy / total_ped_yoy * 100) if total_ped_yoy > 0 else None
+                if efectividad_pct is not None and efect_yoy and efect_yoy > 0:
+                    efect_trend = (efectividad_pct / efect_yoy) - 1
+
             result_row = {**key_values}
             result_row.update({
                 'cobertura': round(cob),
+                'cobertura_real': round(cob_real),
+                'pedidos': round(pedidos),
+                'efectividad_pct': efectividad_pct,
                 'hit_rate': round(hr, 2),
                 'drop_size': round(ds, 2),
                 'cobertura_trend': round(cob_trend, 4) if cob_trend is not None else None,
+                'cobertura_real_trend': round(cob_real_trend, 4) if cob_real_trend is not None else None,
+                'efectividad_trend': round(efect_trend, 4) if efect_trend is not None else None,
                 'hitrate_trend': round(hr_trend, 4) if hr_trend is not None else None,
                 'dropsize_trend': round(ds_trend, 4) if ds_trend is not None else None,
                 'venta_total': round(venta, 2),
@@ -245,6 +374,22 @@ class DriversEngine:
         if monthly_df.empty:
             return pd.DataFrame()
 
+        # Determinar mes de referencia para totales de efectividad
+        max_periodo = monthly_df['periodo'].max()
+        ref_anio_global = int(max_periodo // 100)
+        ref_mes_global = int(max_periodo % 100)
+        import calendar
+        _, last_day = calendar.monthrange(ref_anio_global, ref_mes_global)
+        ref_start = f"{ref_anio_global}-{ref_mes_global:02d}-01"
+        ref_end = f"{ref_anio_global}-{ref_mes_global:02d}-{last_day:02d}"
+        yoy_ref_start = f"{ref_anio_global - 1}-{ref_mes_global:02d}-01"
+        _, last_day_yoy = calendar.monthrange(ref_anio_global - 1, ref_mes_global)
+        yoy_ref_end = f"{ref_anio_global - 1}-{ref_mes_global:02d}-{last_day_yoy:02d}"
+
+        totals_group = self._get_totals_group(key_cols)
+        totals_current = self._get_period_totals(ref_start, ref_end, totals_group)
+        totals_yoy = self._get_period_totals(yoy_ref_start, yoy_ref_end, totals_group)
+
         results = []
 
         for keys, group in monthly_df.groupby(key_cols):
@@ -262,14 +407,20 @@ class DriversEngine:
             ref_anio = int(last['anio'])
 
             cob_current = float(last['cobertura'])
+            cob_real_current = float(last.get('cobertura_real', 0))
+            pedidos_current = float(last.get('pedidos', 0))
             hr_current = float(last['hit_rate'])
             ds_current = float(last['drop_size'])
             venta_current = float(last['venta_total'])
 
+            # Efectividad
+            total_ped = self._lookup_total_pedidos(totals_current, key_cols, last)
+            efectividad_pct = round(pedidos_current / total_ped * 100, 1) if total_ped > 0 else None
+
             yoy_periodo = (ref_anio - 1) * 100 + ref_mes
             yoy_row = group[group['periodo'] == yoy_periodo]
 
-            cob_trend = hr_trend = ds_trend = None
+            cob_trend = cob_real_trend = hr_trend = ds_trend = efect_trend = None
             has_yoy = False
 
             if not yoy_row.empty:
@@ -277,16 +428,31 @@ class DriversEngine:
                 yoy = yoy_row.iloc[0]
                 if yoy['cobertura'] > 0:
                     cob_trend = (cob_current / float(yoy['cobertura'])) - 1
+                cob_real_yoy = float(yoy.get('cobertura_real', 0))
+                if cob_real_yoy > 0:
+                    cob_real_trend = (cob_real_current / cob_real_yoy) - 1
                 if yoy['hit_rate'] > 0:
                     hr_trend = (hr_current / float(yoy['hit_rate'])) - 1
                 if yoy['drop_size'] > 0:
                     ds_trend = (ds_current / float(yoy['drop_size'])) - 1
 
+                # Efectividad YoY
+                pedidos_yoy = float(yoy.get('pedidos', 0))
+                total_ped_yoy = self._lookup_total_pedidos(totals_yoy, key_cols, yoy)
+                efect_yoy = (pedidos_yoy / total_ped_yoy * 100) if total_ped_yoy > 0 else None
+                if efectividad_pct is not None and efect_yoy and efect_yoy > 0:
+                    efect_trend = (efectividad_pct / efect_yoy) - 1
+
             row.update({
                 'cobertura': round(cob_current),
+                'cobertura_real': round(cob_real_current),
+                'pedidos': round(pedidos_current),
+                'efectividad_pct': efectividad_pct,
                 'hit_rate': round(hr_current, 2),
                 'drop_size': round(ds_current, 2),
                 'cobertura_trend': round(cob_trend, 4) if cob_trend is not None else None,
+                'cobertura_real_trend': round(cob_real_trend, 4) if cob_real_trend is not None else None,
+                'efectividad_trend': round(efect_trend, 4) if efect_trend is not None else None,
                 'hitrate_trend': round(hr_trend, 4) if hr_trend is not None else None,
                 'dropsize_trend': round(ds_trend, 4) if ds_trend is not None else None,
                 'venta_total': round(venta_current, 2),
@@ -333,6 +499,11 @@ class DriversEngine:
         df = self._compute_std(['canal_on_of', 'subcanal'])
         return self._normalize_canal_df(df)
 
+    def calculate_by_ciudad_canal(self) -> pd.DataFrame:
+        """Calcula drivers a nivel ciudad + canal (drill-down ciudad→canal)."""
+        df = self._compute_std(['ciudad', 'canal_on_of'])
+        return self._normalize_canal_df(df)
+
     def _normalize_canal_df(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normaliza nombres de canal: renombra columna y corrige typos."""
         if df.empty:
@@ -353,7 +524,7 @@ class DriversEngine:
     # ------------------------------------------------------------------
     def calculate_all(self) -> Dict[str, pd.DataFrame]:
         """
-        Ejecuta el calculo de drivers en los 6 niveles.
+        Ejecuta el calculo de drivers en los 7 niveles.
 
         Returns:
             Dict con claves:
@@ -363,6 +534,7 @@ class DriversEngine:
               - 'by_ciudad_marca': DataFrame con drivers por ciudad+marca
               - 'by_canal': DataFrame con drivers por canal
               - 'by_canal_subcanal': DataFrame con drivers por canal+subcanal
+              - 'by_ciudad_canal': DataFrame con drivers por ciudad+canal
         """
         logger.info("[Drivers] Calculando drivers operativos...")
 
@@ -372,6 +544,7 @@ class DriversEngine:
         by_ciudad_marca = self.calculate_by_ciudad_marca()
         by_canal = self.calculate_by_canal()
         by_canal_sub = self.calculate_by_canal_subcanal()
+        by_ciudad_canal = self.calculate_by_ciudad_canal()
 
         total_marcas = len(by_marca) if not by_marca.empty else 0
         total_ciudades = len(by_ciudad) if not by_ciudad.empty else 0
@@ -387,6 +560,7 @@ class DriversEngine:
             'by_ciudad_marca': by_ciudad_marca,
             'by_canal': by_canal,
             'by_canal_subcanal': by_canal_sub,
+            'by_ciudad_canal': by_ciudad_canal,
         }
 
     @staticmethod

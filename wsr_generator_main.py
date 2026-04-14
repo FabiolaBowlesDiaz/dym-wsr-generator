@@ -850,18 +850,23 @@ class WSRGeneratorSystem:
                     (entrenado sobre 24-36 meses de ventas reales, captura tendencia y estacionalidad) con el Ritmo Actual
                     de ventas del mes extrapolado al cierre. El peso se ajusta diariamente: al inicio de mes domina el modelo
                     historico; conforme avanzan las ventas reales, el ritmo actual gana protagonismo.</li>
-                <li><strong>Drivers de Performance</strong>: Venta = Cobertura x Frecuencia x Drop Size.
-                    Comparacion Same-to-Date (STD): mismos dias del mes actual vs mismos dias del ano anterior.
+                <li><strong>Drivers de Performance</strong>: Comparacion Same-to-Date (STD): mismos dias del mes actual vs mismos dias del ano anterior.
                     Fuente: tabla <em>fact_ventas_detallado</em> del DWH (nivel item con cliente y factura unicos).
-                    <br><strong>Formulas exactas:</strong>
-                    <br>1. <strong>Cobertura</strong> (cli) = COUNT(DISTINCT cod_cliente) — clientes unicos que compraron en el periodo.
-                    <br>2. <strong>Frecuencia</strong> (ped/cli) = COUNT(DISTINCT cuf_factura) / COUNT(DISTINCT cod_cliente) — pedidos unicos por cliente.
-                    <br>3. <strong>Drop Size</strong> (BOB/ped) = SUM(ingreso_neto_bob) / COUNT(DISTINCT cuf_factura) — ingreso neto promedio por pedido.
-                    <br><strong>Check multiplicativo:</strong> Cobertura x Frecuencia x Drop Size = SUM(ingreso_neto_bob) (identidad exacta, diferencias menores por redondeo).
-                    <br><strong>Delta VSLY:</strong> (valor periodo actual / valor mismo periodo ano anterior) - 1.</li>
+                    <br><strong>Metricas:</strong>
+                    <br>1. <strong>Cobertura</strong> (cli) = COUNT(DISTINCT itemname_padre) — clientes padre unicos que compraron en el periodo.
+                    <br>2. <strong>Efectividad</strong> (%) = facturas de la entidad / total facturas x 100 — participacion en ordenes (puede sumar >100% por facturas multi-marca).
+                    <br>3. <strong>Frecuencia</strong> (ped/cli) = COUNT(DISTINCT cuf_factura) / COUNT(DISTINCT cod_cliente) — pedidos unicos por cliente.
+                    <br>4. <strong>Drop Size</strong> (Ing. Neto BOB/ped) = SUM(ingreso_neto_bob) / COUNT(DISTINCT cuf_factura) — ingreso neto promedio por pedido.
+                    <br><strong>Delta VSLY:</strong> (valor periodo actual / valor mismo periodo ano anterior) - 1.
+                    <br><strong>Drill-downs:</strong> Marca se apertura por Ciudad, Ciudad se apertura por Canal.</li>
                 <li><strong>Narrativa IA</strong>: Los resumenes ejecutivos en Drivers (marca, ciudad, canal) y PY Sistema
                     son generados por IA (Claude, Anthropic) basandose exclusivamente en los datos del reporte.
                     No reemplazan el criterio del equipo comercial.</li>
+                <li><strong>Metricas de Avance Mensual</strong>:
+                    <br><strong>Venta diaria promedio actual</strong> = Avance acumulado BOB / Dias laborables de avance.
+                    <br><strong>Venta diaria objetivo</strong> = PY Gerente total BOB / Dias laborables del mes.
+                    <br><strong>Tendencia lineal proyectada</strong> = Venta diaria promedio actual &times; Dias laborables del mes.
+                    <br>Dias laborables = lunes a sabado, excluyendo feriados de Bolivia.</li>
                 <li><strong>PY {self.current_year} por canal</strong>: Calculado mediante multiplicador ponderado (80% peso en avance actual).</li>
                 <li><strong>Tipo de cambio</strong>: 6.96 BOB/USD para conversion de proyecciones.</li>
                 <li><strong>Cobertura de stock</strong>: Calculada con base en venta promedio diaria ultimos {self.current_day} dias.</li>
