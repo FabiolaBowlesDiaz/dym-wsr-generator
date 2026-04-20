@@ -86,6 +86,20 @@ class DataProcessor:
         # Llenar NaN con 0
         df = df.fillna(0)
 
+        # Calcular PY C9L on-the-fly: (avance_c9l * py_bob) / avance_bob
+        # Necesario para que NowcastEngine calcule spread_sistema_c9l correctamente
+        avance_c9l_col = f'avance_{self.current_year}_c9l'
+        avance_bob_col = f'avance_{self.current_year}_bob'
+        py_bob_col = f'py_{self.current_year}_bob'
+        if avance_c9l_col in df.columns and avance_bob_col in df.columns and py_bob_col in df.columns:
+            df[f'py_{self.current_year}_c9l'] = df.apply(
+                lambda row: (row[avance_c9l_col] * row[py_bob_col]) / row[avance_bob_col]
+                if row[avance_bob_col] > 0 else 0,
+                axis=1
+            )
+        else:
+            df[f'py_{self.current_year}_c9l'] = 0
+
         # Calcular KPIs
         df = self._calculate_marca_kpis(df)
 

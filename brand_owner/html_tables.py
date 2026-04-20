@@ -631,8 +631,9 @@ class BrandOwnerTableGenerator:
 
         for _, row in df.iterrows():
             entity = row.get(entity_col, '')
-            cob = row.get('cobertura_real', 0)
-            cob_trend = row.get('cobertura_real_trend', None)
+            # Usar cobertura (cod_cliente = clientes reales), no cobertura_real (items padre)
+            cob = row.get('cobertura', row.get('cobertura_real', 0))
+            cob_trend = row.get('cobertura_trend', row.get('cobertura_real_trend', None))
 
             # Format trend
             if cob_trend is not None and not (isinstance(cob_trend, float) and np.isnan(cob_trend)):

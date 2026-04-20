@@ -527,7 +527,10 @@ class HTMLTableGenerator:
             stock = marca_row.get('stock_c9l', 0)
             cobertura = marca_row.get('cobertura_dias', 0)
             py_sist_c9l = marca_row.get('py_sistema_c9l', 0)
-            spread_sist_c9l = marca_row.get('spread_sistema_c9l', None)
+            # Spread C9L on-the-fly: (PY_gerente_c9l / PY_sistema_c9l) - 1
+            # spread_sistema_c9l del DF no es confiable porque NowcastEngine no encuentra
+            # la PY gerente en C9L (no existe como columna, se calcula on-the-fly arriba)
+            spread_sist_c9l = ((py / py_sist_c9l) - 1) if py_sist_c9l > 0 and py > 0 else None
 
             # Verificar si tiene subfamilias
             subfamilias = df_subfamilia[df_subfamilia['marcadir'] == marca] if not df_subfamilia.empty else pd.DataFrame()
@@ -538,8 +541,8 @@ class HTMLTableGenerator:
             av_pg_class = self._get_kpi_class(av_pg)
             av_sop_class = self._get_kpi_class(av_sop)
             py_v_class = self._get_kpi_class(py_v)
-            spread_c9l_class = self._get_kpi_class(spread_sist_c9l) if spread_sist_c9l is not None and spread_sist_c9l == spread_sist_c9l else ''
-            spread_c9l_display = self.gen.format_number(spread_sist_c9l, is_percentage=True) if spread_sist_c9l is not None and spread_sist_c9l == spread_sist_c9l else '-'
+            spread_c9l_class = self._get_kpi_class(spread_sist_c9l) if spread_sist_c9l is not None else ''
+            spread_c9l_display = self.gen.format_number(spread_sist_c9l, is_percentage=True) if spread_sist_c9l is not None else '-'
 
             # Fila de marca
             expand_button = f'<span class="expand-icon" onclick="toggleSubfamiliaC9L(\'{marca_id}\')">[+]</span>' if tiene_subfamilias else ''
@@ -1043,10 +1046,12 @@ class HTMLTableGenerator:
     @staticmethod
     def _generate_driver_insight(row) -> str:
         """Genera insight programático basado en datos para una marca/ciudad."""
-        cob_t = row.get('cobertura_real_trend')
+        # Usar cobertura (cod_cliente) que son los clientes reales,
+        # no cobertura_real (itemname_padre) que son items del portafolio
+        cob_t = row.get('cobertura_trend', row.get('cobertura_real_trend'))
         hr_t = row.get('hitrate_trend')
         ds_t = row.get('dropsize_trend')
-        cob_real = row.get('cobertura_real', 0)
+        cob_real = row.get('cobertura', row.get('cobertura_real', 0))
         efect = row.get('efectividad_pct', None)
         hr = row.get('hit_rate', 0)
         ds = row.get('drop_size', 0)
@@ -1204,11 +1209,13 @@ class HTMLTableGenerator:
             display_name = str(key_value).title() if str(key_value).isupper() else str(key_value)
             entity_id = str(key_value).replace(' ', '_').replace('.', '').replace(',', '')
 
-            cob_real = row.get('cobertura_real', 0)
+            # "cobertura" = COUNT(DISTINCT cod_cliente) — clientes padre unicos (correcto)
+            # "cobertura_real" = COUNT(DISTINCT itemname_padre) — items padre (NO son clientes)
+            cob_real = row.get('cobertura', row.get('cobertura_real', 0))
             efect = row.get('efectividad_pct', None)
             hr = row.get('hit_rate', 0)
             ds = row.get('drop_size', 0)
-            cob_real_t = row.get('cobertura_real_trend', None)
+            cob_real_t = row.get('cobertura_trend', row.get('cobertura_real_trend', None))
             efect_t = row.get('efectividad_trend', None)
             hr_t = row.get('hitrate_trend', None)
             ds_t = row.get('dropsize_trend', None)
@@ -1273,7 +1280,8 @@ class HTMLTableGenerator:
                     sub_name = str(sub.get(detail_sub_col, '?'))
                     sub_name_display = sub_name.title() if sub_name.isupper() else sub_name
 
-                    s_cob_real = sub.get('cobertura_real', 0)
+                    # Usar cobertura (cod_cliente) en vez de cobertura_real (items padre)
+                    s_cob_real = sub.get('cobertura', sub.get('cobertura_real', 0))
                     s_efect = sub.get('efectividad_pct', None)
                     s_hr = sub.get('hit_rate', 0)
                     s_ds = sub.get('drop_size', 0)
@@ -1283,7 +1291,7 @@ class HTMLTableGenerator:
                     s_hr_str = f"{s_hr:.2f}" if s_hr else "-"
                     s_ds_str = self.gen.format_number(s_ds) if s_ds else "-"
 
-                    s_cob_real_t_str = self._format_trend(sub.get('cobertura_real_trend'))
+                    s_cob_real_t_str = self._format_trend(sub.get('cobertura_trend', sub.get('cobertura_real_trend')))
                     s_efect_t_str = self._format_trend(sub.get('efectividad_trend'))
                     s_hr_t_str = self._format_trend(sub.get('hitrate_trend'))
                     s_ds_t_str = self._format_trend(sub.get('dropsize_trend'))
@@ -1577,6 +1585,10 @@ class HTMLTableGenerator:
                     marca_av_sop = marca_row.get('AV_SOP', 0)
                     marca_py_v = marca_row.get('PY_V', 0)
                     marca_py_sist = marca_row.get('py_sistema_bob', 0)
+                    # Spread on-the-fly para drilldown: (PY_gerente / PY_sistema) - 1
+                    marca_spread = ((marca_py / marca_py_sist) - 1) if marca_py_sist > 0 and marca_py > 0 else None
+                    marca_spread_class = self._get_kpi_class(marca_spread) if marca_spread is not None else ''
+                    marca_spread_display = self.gen.format_number(marca_spread, is_percentage=True) if marca_spread is not None else '-'
 
                     # Clases CSS para KPIs de marca
                     marca_py_sop_class = self._get_kpi_class(marca_py_sop)
@@ -1594,7 +1606,7 @@ class HTMLTableGenerator:
                         <td class="text-right">{self.gen.format_number(marca_avance)}</td>
                         <td class="text-right">{self.gen.format_number(marca_py)}</td>
                         <td class="text-right" style="color: #1d4ed8; background: #EFF6FF;">{self.gen.format_number(marca_py_sist) if marca_py_sist else '-'}</td>
-                        <td class="text-right" style="background: #FFF7ED;">-</td>
+                        <td class="text-right {marca_spread_class}" style="background: #FFF7ED;">{marca_spread_display}</td>
                         <td class="text-right {marca_py_sop_class}">{self.gen.format_number(marca_py_sop, is_percentage=True)}</td>
                         <td class="text-right {marca_av_pg_class}">{self.gen.format_number(marca_av_pg, is_percentage=True)}</td>
                         <td class="text-right {marca_av_sop_class}">{self.gen.format_number(marca_av_sop, is_percentage=True)}</td>

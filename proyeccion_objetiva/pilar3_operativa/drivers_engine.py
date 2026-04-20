@@ -13,10 +13,13 @@ Calcula los drivers operativos a 7 niveles:
   7. Por ciudad + canal (drilldown)
 
 Definiciones:
-  Cobertura (cli) = COUNT(DISTINCT itemname_padre)          -- clientes padre unicos
+  Cobertura (cli) = COUNT(DISTINCT cod_cliente)             -- clientes padre unicos (ALCANCE)
   Efectividad (%) = pedidos_entidad / pedidos_totales x 100 -- share de facturas
   Frecuencia      = COUNT(DISTINCT cuf_factura) / COUNT(DISTINCT cod_cliente)
   Drop Size       = SUM(ingreso_neto_bob) / pedidos         -- ticket promedio (ingreso neto)
+
+  Nota: cobertura_real (COUNT DISTINCT itemname_padre) = items padre unicos (PORTAFOLIO),
+  NO son clientes. Se retorna como columna adicional pero NO debe mostrarse como "clientes".
 """
 
 import pandas as pd

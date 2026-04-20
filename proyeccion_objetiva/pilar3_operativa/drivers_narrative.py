@@ -162,8 +162,9 @@ class DriversNarrativeGenerator:
 
         for _, row in df.iterrows():
             marca = row.get(key_col, '?')
-            cob_real = row.get('cobertura_real', 0)
-            cob_real_t = row.get('cobertura_real_trend', None)
+            # Usar cobertura (cod_cliente = clientes reales), no cobertura_real (items padre)
+            cob_real = row.get('cobertura', row.get('cobertura_real', 0))
+            cob_real_t = row.get('cobertura_trend', row.get('cobertura_real_trend', None))
             efect = row.get('efectividad_pct', None)
             efect_t = row.get('efectividad_trend', None)
             hr = row.get('hit_rate', 0)
