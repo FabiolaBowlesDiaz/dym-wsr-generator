@@ -1260,6 +1260,126 @@ class DatabaseManager:
         """
         return self.execute_query(query)
 
+    # === QUERY BRAND OWNER (Pernod) ===
+
+    def get_pernod_brands(self) -> list:
+        """
+        Obtener lista de marcas Pernod desde DimArticulo.
+        Retorna lista de strings en UPPER (ej: ['HAVANA', 'CHIVAS', ...])
+        """
+        query = """
+        SELECT DISTINCT UPPER(marcadir) as marcadir
+        FROM auto.dimarticulo
+        WHERE UPPER(brandmanager) = 'PERNOD'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA', 'RESTO')
+        ORDER BY marcadir
+        """
+        df = self.execute_query(query)
+        if df.empty:
+            logger.warning("No se encontraron marcas Pernod en auto.dimarticulo")
+            return []
+        brands = df['marcadir'].tolist()
+        logger.info(f"Marcas Pernod encontradas: {len(brands)} — {brands}")
+        return brands
+
+    # === QUERIES POR CANAL × MARCA (Brand Owner) ===
+
+    def get_ventas_historicas_canal_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener ventas historicas por canal y marca directorio"""
+        query = f"""
+        SELECT
+            canal,
+            marcadir,
+            SUM(CAST(fin_01_ingreso AS NUMERIC)) as vendido_{year}_bob,
+            SUM(CAST(c9l AS NUMERIC)) as vendido_{year}_c9l
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY canal, marcadir
+        ORDER BY canal, SUM(CAST(fin_01_ingreso AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_avance_actual_canal_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
+        """Obtener avance actual por canal y marca directorio"""
+        query = f"""
+        SELECT
+            canal,
+            marcadir,
+            SUM(CAST(fin_01_ingreso AS NUMERIC)) as avance_{year}_bob,
+            SUM(CAST(c9l AS NUMERIC)) as avance_{year}_c9l
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND dia <= {day}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY canal, marcadir
+        ORDER BY canal, SUM(CAST(fin_01_ingreso AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_sop_canal_marca(self, year: int, month: int) -> pd.DataFrame:
+        """Obtener SOP (presupuesto mensual) por canal y marca directorio"""
+        query = f"""
+        SELECT
+            canal,
+            marcadirectorio as marcadir,
+            SUM(CAST(ingreso_neto_sus AS NUMERIC)) as sop_bob,
+            SUM(CAST(c9l AS NUMERIC)) as sop_c9l
+        FROM {self.schema}.factpresupuesto_mensual
+        WHERE EXTRACT(YEAR FROM CAST(tiempo_key AS DATE)) = {year}
+            AND EXTRACT(MONTH FROM CAST(tiempo_key AS DATE)) = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadirectorio) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY canal, marcadirectorio
+        ORDER BY canal, SUM(CAST(ingreso_neto_sus AS NUMERIC)) DESC
+        """
+        return self.execute_query(query)
+
+    def get_ventas_semanales_canal_marca(self, year: int, month: int, day: int) -> pd.DataFrame:
+        """Obtener ventas semanales por canal y marca directorio"""
+        weeks = self.get_calendar_week_ranges(year, month)
+
+        week_cases_bob = []
+        week_cases_c9l = []
+        for i, (start, end) in enumerate(weeks, 1):
+            effective_end = min(end, day)
+            if start <= day:
+                week_cases_bob.append(
+                    f"SUM(CASE WHEN dia BETWEEN {start} AND {effective_end} THEN CAST(fin_01_ingreso AS NUMERIC) ELSE 0 END) as semana{i}_bob"
+                )
+                week_cases_c9l.append(
+                    f"SUM(CASE WHEN dia BETWEEN {start} AND {effective_end} THEN CAST(c9l AS NUMERIC) ELSE 0 END) as semana{i}_c9l"
+                )
+            else:
+                week_cases_bob.append(f"0 as semana{i}_bob")
+                week_cases_c9l.append(f"0 as semana{i}_c9l")
+
+        all_cases = ",\n            ".join(week_cases_bob + week_cases_c9l)
+
+        query = f"""
+        SELECT
+            canal,
+            marcadir,
+            {all_cases}
+        FROM {self.schema}.td_ventas_bob_historico
+        WHERE anio = {year}
+            AND mes = {month}
+            AND dia <= {day}
+            AND UPPER(ciudad) != 'TURISMO'
+            AND UPPER(canal) != 'TURISMO'
+            AND UPPER(marcadir) NOT IN ('NINGUNA', 'SIN MARCA ASIGNADA')
+        GROUP BY canal, marcadir
+        ORDER BY canal, marcadir
+        """
+        return self.execute_query(query)
+
     # === QUERIES POR CANAL ===
     
     def get_ventas_historicas_canal(self, year: int, month: int) -> pd.DataFrame:
