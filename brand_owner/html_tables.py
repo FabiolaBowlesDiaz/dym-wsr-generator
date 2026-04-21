@@ -116,12 +116,9 @@ class BrandOwnerTableGenerator:
                     <th>MTD</th>
                     <th>PY GRCs</th>
                     <th>Auto PY</th>
-                    <th>Spread</th>
                     <th>GRCs/Mensual</th>
                     <th>MTD/Mensual</th>
                     <th>GRCs VS LY</th>
-                    <th>Stock</th>
-                    <th>Cobertura (días)</th>
                 </tr>
             </thead>
             <tbody>
@@ -162,7 +159,8 @@ class BrandOwnerTableGenerator:
             spread_class = self._kpi_class(spread) if spread is not None and spread == spread else ''
             spread_display = self._fmt(spread, pct=True) if spread is not None and spread == spread else '-'
 
-            expand_btn = f'<span class="expand-icon" onclick="toggleBOMarca(\'{marca_id}\')">[+]</span>' if tiene_sub else ''
+            # Mostrar siempre [+] como indicador visual; si no hay subfamilias no hace nada al click
+            expand_btn = f'<span class="expand-icon" onclick="toggleBOMarca(\'{marca_id}\')">[+]</span>'
 
             html += f"""
                 <tr class="marca-row" data-marca="{marca_id}">
@@ -173,12 +171,9 @@ class BrandOwnerTableGenerator:
                     <td class="text-right">{self._fmt(avance)}</td>
                     <td class="text-right">{self._fmt(py)}</td>
                     <td class="text-right" style="color: #1d4ed8; font-weight: 600; background: #EFF6FF;">{self._fmt(py_sist) if py_sist else '-'}</td>
-                    <td class="text-right {spread_class}" style="font-weight: 600; background: #FFF7ED;">{spread_display}</td>
                     <td class="text-right {self._kpi_class(py_sop)}">{self._fmt(py_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(av_sop)}">{self._fmt(av_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(py_v)}">{self._fmt(py_v, pct=True)}</td>
-                    <td class="text-right">{self._fmt(stock, 0)}</td>
-                    <td class="text-right">{self._fmt(cobertura, 0)}</td>
                 </tr>
             """
 
@@ -201,12 +196,9 @@ class BrandOwnerTableGenerator:
                         <td class="text-right">{self._fmt(s_avance)}</td>
                         <td class="text-right">-</td>
                         <td class="text-right" style="color: #1d4ed8; background: #EFF6FF;">-</td>
-                        <td class="text-right" style="background: #FFF7ED;">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right {self._kpi_class(s_av_sop)}">{self._fmt(s_av_sop, pct=True)}</td>
                         <td class="text-right">-</td>
-                        <td class="text-right">{self._fmt(s_stock, 0)}</td>
-                        <td class="text-right">{self._fmt(s_cob, 0)}</td>
                     </tr>
                     """
 
@@ -240,12 +232,9 @@ class BrandOwnerTableGenerator:
                     <td class="text-right"><strong>{self._fmt(t_avance)}</strong></td>
                     <td class="text-right"><strong>{self._fmt(t_py)}</strong></td>
                     <td class="text-right" style="color: #1d4ed8; font-weight: 600; background: #EFF6FF;"><strong>{self._fmt(t_py_sist) if t_py_sist else '-'}</strong></td>
-                    <td class="text-right {t_spread_class}" style="font-weight: 600; background: #FFF7ED;"><strong>{t_spread_display}</strong></td>
                     <td class="text-right {self._kpi_class(t_py_sop)}"><strong>{self._fmt(t_py_sop, pct=True)}</strong></td>
                     <td class="text-right {self._kpi_class(t_av_sop)}"><strong>{self._fmt(t_av_sop, pct=True)}</strong></td>
                     <td class="text-right {self._kpi_class(t_py_v)}"><strong>{self._fmt(t_py_v, pct=True)}</strong></td>
-                    <td class="text-right"><strong>{self._fmt(t_stock, 0)}</strong></td>
-                    <td class="text-right"><strong>{self._fmt(t_cob, 0)}</strong></td>
                 </tr>
             </tbody>
         </table>
@@ -274,9 +263,8 @@ class BrandOwnerTableGenerator:
         <table>
             <thead><tr>
                 <th>Marca</th><th>LY</th><th>Mensual</th><th>MTD</th>
-                <th>PY GRCs</th><th>Auto PY</th><th>Spread</th>
+                <th>PY GRCs</th><th>Auto PY</th>
                 <th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
-                <th>Stock</th><th>Cobertura (días)</th>
             </tr></thead>
             <tbody>
         """
@@ -303,12 +291,9 @@ class BrandOwnerTableGenerator:
                     <td class="text-right">{self._fmt(avance)}</td>
                     <td class="text-right">{self._fmt(py)}</td>
                     <td class="text-right" style="color: #1d4ed8; font-weight: 600; background: #EFF6FF;">{self._fmt(py_sist) if py_sist else '-'}</td>
-                    <td class="text-right" style="font-weight: 600; background: #FFF7ED;">{spread_display}</td>
                     <td class="text-right {self._kpi_class(py_sop)}">{self._fmt(py_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(av_sop)}">{self._fmt(av_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(py_v)}">{self._fmt(py_v, pct=True)}</td>
-                    <td class="text-right">{self._fmt(row.get('stock_c9l', 0), 0)}</td>
-                    <td class="text-right">{self._fmt(row.get('cobertura_dias', 0), 0)}</td>
                 </tr>
             """
 
@@ -459,6 +444,12 @@ class BrandOwnerTableGenerator:
         df_canal = estructura_canal.get('canal_totales')
         df_canal_marca = estructura_canal.get('canal_marca')
 
+        # Filtrar canales que no tienen avance Pernod y ordenar
+        avance_col_bob = f'avance_{self.current_year}_bob'
+        if df_canal is not None and avance_col_bob in df_canal.columns:
+            df_canal = df_canal[df_canal[avance_col_bob] > 0].copy()
+            df_canal = df_canal.sort_values(avance_col_bob, ascending=False)
+
         for _, canal_row in df_canal.iterrows():
             canal = canal_row['canal']
             canal_id = canal.replace(' ', '_').replace('.', '')
@@ -478,7 +469,8 @@ class BrandOwnerTableGenerator:
             marcas = df_canal_marca[df_canal_marca['canal'] == canal] if df_canal_marca is not None and not df_canal_marca.empty else pd.DataFrame()
             tiene_marcas = not marcas.empty
 
-            expand_btn = f'<span class="expand-icon" onclick="toggleBOCanal(\'{canal_id}\')">[+]</span>' if tiene_marcas else ''
+            # Mostrar siempre [+] como indicador visual
+            expand_btn = f'<span class="expand-icon" onclick="toggleBOCanal(\'{canal_id}\')">[+]</span>'
 
             html += f"""
                 <tr class="marca-row">
@@ -610,20 +602,20 @@ class BrandOwnerTableGenerator:
                 <strong>Cobertura (cli)</strong> = clientes padre unicos (Distinctcount Cod. Cliente Padre)
                 &nbsp;|&nbsp; <em>Same-to-Date</em>
             </p>
-            <div style="overflow-x: auto;">
-            <table style="font-size: 11px; width: 100%; border-collapse: collapse; min-width: 600px;">
+            <div>
+            <table style="font-size: 11px; width: 100%; border-collapse: collapse; table-layout: fixed;">
                 <colgroup>
-                    <col style="width: 140px;">
-                    <col style="width: 90px;">
-                    <col style="width: 90px;">
+                    <col style="width: 110px;">
+                    <col style="width: 75px;">
+                    <col style="width: 75px;">
                     <col>
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style="text-align: left;">{entity_col.title()}</th>
-                        <th>Cobertura<br>(cli padre)</th>
-                        <th>&Delta; VS LY</th>
-                        <th style="text-align: left;">Comentario</th>
+                        <th style="text-align: left; padding: 8px;">{entity_col.title()}</th>
+                        <th style="padding: 8px;">Cobertura<br>(cli padre)</th>
+                        <th style="padding: 8px;">&Delta; VS LY</th>
+                        <th style="text-align: left; padding: 8px;">Comentario</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -661,10 +653,10 @@ class BrandOwnerTableGenerator:
 
             html += f"""
                     <tr style="border-bottom: 1px solid #e5e7eb;">
-                        <td style="padding: 8px 6px; font-weight: 600;">{entity}</td>
-                        <td style="padding: 8px 6px; text-align: right;">{int(cob):,}</td>
-                        <td style="padding: 8px 6px; text-align: center;">{arrow}</td>
-                        <td style="padding: 8px 10px; font-size: 10.5px; line-height: 1.5; color: #374151;">{comment}</td>
+                        <td style="padding: 10px 8px; font-weight: 600; vertical-align: top;">{entity}</td>
+                        <td style="padding: 10px 8px; text-align: right; vertical-align: top;">{int(cob):,}</td>
+                        <td style="padding: 10px 8px; text-align: center; vertical-align: top;">{arrow}</td>
+                        <td style="padding: 10px 12px; font-size: 11px; line-height: 1.55; color: #374151; white-space: normal; word-wrap: break-word; overflow-wrap: break-word; text-align: left;">{comment}</td>
                     </tr>
             """
 
@@ -695,6 +687,113 @@ class BrandOwnerTableGenerator:
                     clean = clean[dash_pos + 1:].strip()
                 result[marca] = clean
         return result
+
+    # ------------------------------------------------------------------
+    # STOCK Y COBERTURA
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # CIUDAD TABLES (C9L, con drilldown por Marca)
+    # ------------------------------------------------------------------
+
+    def generate_ciudad_tables(self, estructura_ciudad: dict) -> str:
+        """Generar tabla ciudad con drilldown por marca (C9L, Brand Owner)"""
+        df_ciudad = estructura_ciudad.get('ciudad_totales')
+        if df_ciudad is None or df_ciudad.empty:
+            return "<p>No hay datos disponibles para ciudades</p>"
+
+        df_ciudad_marca = estructura_ciudad.get('ciudad_marca')
+
+        vendido_col = f'vendido_{self.previous_year}_c9l'
+        avance_col = f'avance_{self.current_year}_c9l'
+        avance_col_bob = f'avance_{self.current_year}_bob'
+
+        # Filtrar ciudades sin avance Pernod
+        if avance_col_bob in df_ciudad.columns:
+            df_ciudad = df_ciudad[df_ciudad[avance_col_bob] > 0].copy()
+            df_ciudad = df_ciudad.sort_values(avance_col_bob, ascending=False)
+
+        html = f"""
+        <h3>PERFORMANCE POR CIUDAD (Con desglose por Marca)</h3>
+        <div class="table-container">
+        <table id="tabla-bo-ciudad">
+            <thead><tr>
+                <th style="width: 30px;"></th>
+                <th>Ciudad / Marca</th><th>LY</th><th>Mensual</th><th>MTD</th>
+                <th>PY GRCs</th><th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
+            </tr></thead>
+            <tbody>
+        """
+
+        for _, ciudad_row in df_ciudad.iterrows():
+            ciudad = ciudad_row['ciudad']
+            ciudad_id = ciudad.replace(' ', '_').replace('.', '')
+
+            vendido = ciudad_row.get(vendido_col, 0)
+            sop = ciudad_row.get('sop_c9l', 0)
+            avance = ciudad_row.get(avance_col, 0)
+            avance_bob = ciudad_row.get(avance_col_bob, 0)
+            py_bob = ciudad_row.get(f'py_{self.current_year}_bob', 0)
+            py = (avance * py_bob / avance_bob) if avance_bob > 0 else 0
+
+            py_sop = ((py / sop) - 1) if sop > 0 else 0
+            av_sop = ((avance / sop) - 1) if sop > 0 else 0
+            py_v = ((py / vendido) - 1) if vendido > 0 else 0
+
+            # Marca rows within ciudad
+            marcas = df_ciudad_marca[df_ciudad_marca['ciudad'] == ciudad] if df_ciudad_marca is not None and not df_ciudad_marca.empty else pd.DataFrame()
+            tiene_marcas = not marcas.empty
+
+            expand_btn = f'<span class="expand-icon" onclick="toggleBOCiudad(\'{ciudad_id}\')">[+]</span>'
+
+            html += f"""
+                <tr class="ciudad-row">
+                    <td class="expand-cell">{expand_btn}</td>
+                    <td class="marca-nombre"><strong>{ciudad}</strong></td>
+                    <td class="text-right">{self._fmt(vendido)}</td>
+                    <td class="text-right">{self._fmt(sop)}</td>
+                    <td class="text-right">{self._fmt(avance)}</td>
+                    <td class="text-right">{self._fmt(py)}</td>
+                    <td class="text-right {self._kpi_class(py_sop)}">{self._fmt(py_sop, pct=True)}</td>
+                    <td class="text-right {self._kpi_class(av_sop)}">{self._fmt(av_sop, pct=True)}</td>
+                    <td class="text-right {self._kpi_class(py_v)}">{self._fmt(py_v, pct=True)}</td>
+                </tr>
+            """
+
+            if tiene_marcas:
+                for _, m_row in marcas.iterrows():
+                    m_vendido = m_row.get(vendido_col, 0)
+                    m_sop = m_row.get('sop_c9l', 0)
+                    m_avance = m_row.get(avance_col, 0)
+                    m_av_sop = ((m_avance / m_sop) - 1) if m_sop > 0 else 0
+
+                    html += f"""
+                    <tr class="subfamilia-row ciudad-bo-{ciudad_id}" style="display: none;">
+                        <td></td>
+                        <td class="subfamilia-indent">\u251c\u2500 {m_row.get('marcadir', '')}</td>
+                        <td class="text-right">{self._fmt(m_vendido)}</td>
+                        <td class="text-right">{self._fmt(m_sop)}</td>
+                        <td class="text-right">{self._fmt(m_avance)}</td>
+                        <td class="text-right">-</td>
+                        <td class="text-right">-</td>
+                        <td class="text-right {self._kpi_class(m_av_sop)}">{self._fmt(m_av_sop, pct=True)}</td>
+                        <td class="text-right">-</td>
+                    </tr>
+                    """
+
+        html += """
+            </tbody></table></div>
+        <script>
+        function toggleBOCiudad(ciudad) {
+            const rows = document.querySelectorAll('.ciudad-bo-' + ciudad);
+            const icon = event.target;
+            const isExpanded = icon.textContent === '[-]';
+            rows.forEach(row => { row.style.display = isExpanded ? 'none' : ''; });
+            icon.textContent = isExpanded ? '[+]' : '[-]';
+        }
+        </script>
+        """
+        return html
 
     # ------------------------------------------------------------------
     # STOCK Y COBERTURA

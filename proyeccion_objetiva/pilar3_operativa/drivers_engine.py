@@ -48,13 +48,30 @@ class DriversEngine:
     y computa tendencias YoY para diagnostico.
     """
 
-    def __init__(self, db_manager, schema: str = 'auto', current_date=None):
+    def __init__(self, db_manager, schema: str = 'auto', current_date=None,
+                 brand_filter: Optional[List[str]] = None):
+        """
+        Args:
+            brand_filter: Si se proporciona, restringe el calculo a esa lista
+                          de marcas (usado por Brand Owner WSR para filtrar Pernod).
+                          Se usa contra la columna `marca` de fact_ventas_detallado.
+        """
         self.db = db_manager
         self.schema = schema
         if current_date is None:
             from datetime import datetime
             current_date = datetime.now()
         self.current_date = current_date
+        self.brand_filter = [b.upper() for b in brand_filter] if brand_filter else None
+        if self.brand_filter:
+            logger.info(f"[Drivers] Filtro de marcas activo: {self.brand_filter}")
+
+    def _brand_filter_sql(self) -> str:
+        """Retorna clausula SQL para filtrar por marcas (o cadena vacia si no hay filtro)."""
+        if not self.brand_filter:
+            return ""
+        brands_sql = ", ".join(f"'{b}'" for b in self.brand_filter)
+        return f"  AND UPPER(marca) IN ({brands_sql})\n"
 
     def _build_query(self, group_cols: List[str]) -> str:
         """Construye query base para fact_ventas_detallado agrupado por las columnas indicadas."""
@@ -62,6 +79,7 @@ class DriversEngine:
         excluded_cities_sql = ", ".join(f"'{c}'" for c in EXCLUDED_CITIES)
 
         group_sql = ", ".join(group_cols)
+        brand_filter_sql = self._brand_filter_sql()
 
         return f"""
         SELECT
@@ -83,7 +101,7 @@ class DriversEngine:
         FROM {self.schema}.{TABLE_VENTAS_DETALLADO}
         WHERE UPPER(marca) NOT IN ({excluded_brands_sql})
           AND UPPER(ciudad) NOT IN ({excluded_cities_sql})
-        GROUP BY {group_sql}, EXTRACT(YEAR FROM fecha), EXTRACT(MONTH FROM fecha)
+{brand_filter_sql}        GROUP BY {group_sql}, EXTRACT(YEAR FROM fecha), EXTRACT(MONTH FROM fecha)
         ORDER BY {group_sql}, anio, mes
         """
 
@@ -111,6 +129,7 @@ class DriversEngine:
         excluded_cities_sql = ", ".join(f"'{c}'" for c in EXCLUDED_CITIES)
         group_sql = ", ".join(group_cols)
 
+        brand_filter_sql = self._brand_filter_sql()
         return f"""
         SELECT
             {group_sql},
@@ -131,7 +150,7 @@ class DriversEngine:
           AND UPPER(ciudad) NOT IN ({excluded_cities_sql})
           AND fecha >= '{start_date}'
           AND fecha <= '{end_date}'
-        GROUP BY {group_sql}
+{brand_filter_sql}        GROUP BY {group_sql}
         ORDER BY {group_sql}
         """
 

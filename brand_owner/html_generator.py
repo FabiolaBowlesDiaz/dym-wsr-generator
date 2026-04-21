@@ -69,7 +69,8 @@ class BrandOwnerHTMLGenerator:
                                   marca_tables_html: str,
                                   canal_tables_html: str,
                                   stock_html: str,
-                                  comentarios_py_html: str = "") -> str:
+                                  comentarios_py_html: str = "",
+                                  ciudad_tables_html: str = "") -> str:
         """Generar el HTML completo del reporte Brand Owner"""
 
         mes = self.meses[self.current_month]
@@ -96,22 +97,7 @@ class BrandOwnerHTMLGenerator:
 
         {self._generate_resumen_ejecutivo(summary_data, comentarios_analysis)}
 
-        <div class="section">
-            <h2>1. PERFORMANCE POR MARCA</h2>
-            {marca_tables_html}
-        </div>
-
-        {self._wrap_section("2. COMENTARIOS PY SISTEMA", comentarios_py_html) if comentarios_py_html else ""}
-
-        <div class="section">
-            <h2>3. PERFORMANCE POR CANAL</h2>
-            {canal_tables_html}
-        </div>
-
-        <div class="section">
-            <h2>4. ANALISIS DE STOCK Y COBERTURA</h2>
-            {stock_html}
-        </div>
+        {self._build_sections(marca_tables_html, comentarios_py_html, canal_tables_html, ciudad_tables_html, stock_html)}
 
         {self._generate_footer()}
     </div>
@@ -129,6 +115,34 @@ class BrandOwnerHTMLGenerator:
             {content}
         </div>
         """
+
+    def _build_sections(self, marca_html, comentarios_py_html, canal_html,
+                        ciudad_html, stock_html) -> str:
+        """Construir secciones con numeracion dinamica (salta las vacias)"""
+        sections = []
+
+        # Orden fijo: Marca, Comentarios PY, Canal, Ciudad, Stock
+        candidates = [
+            ("PERFORMANCE POR MARCA", marca_html),
+            ("COMENTARIOS PY SISTEMA", comentarios_py_html),
+            ("PERFORMANCE POR CANAL", canal_html),
+            ("PERFORMANCE POR CIUDAD", ciudad_html),
+            ("ANALISIS DE STOCK Y COBERTURA", stock_html),
+        ]
+
+        n = 1
+        html = ""
+        for title, content in candidates:
+            if not content:
+                continue
+            html += f"""
+        <div class="section">
+            <h2>{n}. {title}</h2>
+            {content}
+        </div>
+"""
+            n += 1
+        return html
 
     def _generate_resumen_ejecutivo(self, summary_data: Dict, comentarios: str) -> str:
         """Generar resumen ejecutivo con KPIs en C9L"""
@@ -261,22 +275,30 @@ class BrandOwnerHTMLGenerator:
         tr.total-row td { padding: 8px 5px; border-bottom: 2px solid #1e3a8a; }
 
         /* Frozen columns for drilldown tables */
-        #tabla-bo-marca th:nth-child(1), #tabla-bo-canal th:nth-child(1) {
+        #tabla-bo-marca th:nth-child(1), #tabla-bo-canal th:nth-child(1),
+        #tabla-bo-ciudad th:nth-child(1) {
             position: sticky; left: 0; z-index: 11; background: #1e3a8a; width: 30px; min-width: 30px; max-width: 30px; text-align: center; border-right: 2px solid #2563eb;
         }
-        #tabla-bo-marca th:nth-child(2), #tabla-bo-canal th:nth-child(2) {
+        #tabla-bo-marca th:nth-child(2), #tabla-bo-canal th:nth-child(2),
+        #tabla-bo-ciudad th:nth-child(2) {
             position: sticky; left: 30px; z-index: 11; background: #1e3a8a; text-align: left; min-width: 160px; max-width: 200px; border-right: 2px solid #2563eb;
         }
-        #tabla-bo-marca td:nth-child(1), #tabla-bo-canal td:nth-child(1) {
+        #tabla-bo-marca td:nth-child(1), #tabla-bo-canal td:nth-child(1),
+        #tabla-bo-ciudad td:nth-child(1) {
             position: sticky; left: 0; z-index: 10; background: white; width: 30px; min-width: 30px; max-width: 30px; text-align: center; border-right: 1px solid #e5e7eb;
+            overflow: visible; text-overflow: clip;
         }
-        #tabla-bo-marca td:nth-child(2), #tabla-bo-canal td:nth-child(2) {
+        .expand-icon { cursor: pointer; font-family: monospace; color: #1e3a8a; font-weight: 600; display: inline-block; }
+        #tabla-bo-marca td:nth-child(2), #tabla-bo-canal td:nth-child(2),
+        #tabla-bo-ciudad td:nth-child(2) {
             position: sticky; left: 30px; z-index: 10; background: white; text-align: left; font-weight: 500; min-width: 160px; max-width: 200px; border-right: 1px solid #e5e7eb;
         }
         #tabla-bo-marca tr.subfamilia-row td:nth-child(1), #tabla-bo-marca tr.subfamilia-row td:nth-child(2),
-        #tabla-bo-canal tr.subfamilia-row td:nth-child(1), #tabla-bo-canal tr.subfamilia-row td:nth-child(2) { background: #f8fafc; }
+        #tabla-bo-canal tr.subfamilia-row td:nth-child(1), #tabla-bo-canal tr.subfamilia-row td:nth-child(2),
+        #tabla-bo-ciudad tr.subfamilia-row td:nth-child(1), #tabla-bo-ciudad tr.subfamilia-row td:nth-child(2) { background: #f8fafc; }
         #tabla-bo-marca tr.total-row td:nth-child(1), #tabla-bo-marca tr.total-row td:nth-child(2),
-        #tabla-bo-canal tr.total-row td:nth-child(1), #tabla-bo-canal tr.total-row td:nth-child(2) { background: #f0f9ff; }
+        #tabla-bo-canal tr.total-row td:nth-child(1), #tabla-bo-canal tr.total-row td:nth-child(2),
+        #tabla-bo-ciudad tr.total-row td:nth-child(1), #tabla-bo-ciudad tr.total-row td:nth-child(2) { background: #f0f9ff; }
 
         .positive { color: #059669; }
         .negative { color: #dc2626; }

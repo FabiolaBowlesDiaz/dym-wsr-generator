@@ -32,8 +32,10 @@ from brand_owner.html_tables import BrandOwnerTableGenerator
 from brand_owner.summary_builder import build_summary_data
 from brand_owner.data_filter import (
     filter_data_dict, exclude_inactive_brands,
-    build_canal_from_canal_marca, filter_dataframe
+    build_canal_from_canal_marca, build_ciudad_from_ciudad_marca,
+    filter_dataframe
 )
+from brand_owner.canal_proyeccion import calcular_py_canal_pernod
 from utils.business_days import BusinessDaysCalculator
 import pandas as pd
 
@@ -131,9 +133,23 @@ class BrandOwnerWSRGenerator:
             logger.info("Procesando datos de canal (solo Pernod)...")
             data_canal = build_canal_from_canal_marca(
                 data['canal_marca'], pernod_brands)
-            # Merge re-aggregated canal data into canal dict
             for key, df in data_canal.items():
                 data['canal'][key] = df
+
+            # 6b. Ciudad: fetch ciudad×marca, filtrar Pernod, re-agregar
+            logger.info("Procesando datos de ciudad (solo Pernod)...")
+            data_ciudad = build_ciudad_from_ciudad_marca(
+                data['ciudad_marca'], pernod_brands)
+            # Renombrar keys (quitar sufijo _ciudad_marca) para consolidate_ciudad_data
+            key_map = {
+                'ventas_historicas_ciudad_marca': 'ventas_historicas',
+                'avance_actual_ciudad_marca': 'avance_actual',
+                'sop_ciudad_marca': 'sop',
+                'proyecciones_ciudad_marca': 'proyecciones',
+            }
+            for old_key, df in data_ciudad.items():
+                new_key = key_map.get(old_key, old_key)
+                data['ciudad'][new_key] = df
 
             # 7. Consolidar datos via DataProcessor existente
             logger.info("Consolidando datos...")
@@ -142,11 +158,51 @@ class BrandOwnerWSRGenerator:
             )
             marcas_df = estructura_marca['marca_totales']
 
+            # 7b. Calcular proyeccion por canal para Pernod
+            #     Replica formula ponderada del WSR principal (R, S, T redistribuidos sin Q)
+            py_col = f'py_{self.current_year}_bob'
+            total_py_pernod_bob = float(marcas_df[py_col].sum()) if py_col in marcas_df.columns else 0
+
+            if total_py_pernod_bob > 0:
+                proy_canal = calcular_py_canal_pernod(
+                    canal_data=data['canal'],
+                    total_py_pernod_bob=total_py_pernod_bob,
+                    current_year=self.current_year,
+                    previous_year=self.previous_year
+                )
+                if not proy_canal.empty:
+                    data['canal']['proyecciones_canal'] = proy_canal
+
             canales_df = self.data_processor.consolidate_canal_data(data['canal'])
 
             # 8. Preparar estructura canal→marca para drilldown
             estructura_canal = self._build_canal_marca_estructura(
                 data['canal_marca'], pernod_brands)
+
+            # 8b. Enriquecer canal_totales con PY desde canales_df (para drilldown)
+            if estructura_canal.get('canal_totales') is not None and not estructura_canal['canal_totales'].empty:
+                py_cols_to_merge = [f'py_{self.current_year}_bob', f'py_{self.current_year}_c9l']
+                available_py_cols = [c for c in py_cols_to_merge if c in canales_df.columns]
+                if available_py_cols:
+                    ct = estructura_canal['canal_totales'].copy()
+                    ct['_canal_upper'] = ct['canal'].str.upper()
+                    cf = canales_df[['canal'] + available_py_cols].copy()
+                    cf['_canal_upper'] = cf['canal'].str.upper()
+                    cf = cf.drop(columns=['canal'])
+                    merged = pd.merge(ct, cf, on='_canal_upper', how='left').drop(columns=['_canal_upper'])
+                    estructura_canal['canal_totales'] = merged.fillna(0)
+
+            # 8c. Ciudad: consolidar + estructura para drilldown marca
+            ciudades_df = self.data_processor.consolidate_ciudad_marca_data(
+                data['ciudad'], data['ciudad_marca']
+            )
+            # ciudades_df es un dict con ciudad_totales y ciudad_marca
+            # Filtrar ciudad_marca a Pernod (para drilldown)
+            if isinstance(ciudades_df, dict) and 'ciudad_marca' in ciudades_df:
+                ciudades_df['ciudad_marca'] = filter_dataframe(
+                    ciudades_df['ciudad_marca'], pernod_brands)
+            estructura_ciudad = ciudades_df
+            ciudades_totales_df = estructura_ciudad.get('ciudad_totales', pd.DataFrame())
 
             # 9. Resumen ejecutivo (C9L)
             logger.info("Calculando resumen ejecutivo...")
@@ -171,11 +227,13 @@ class BrandOwnerWSRGenerator:
             projection_data = None
             drivers_data = {}
             drivers_narrative = ""
+            drivers_canal_narrative = ""
             if PROJECTION_AVAILABLE:
                 try:
-                    logger.info("Calculando proyecciones objetivas + drivers...")
+                    logger.info("Calculando proyecciones objetivas + drivers (filtrado a Pernod)...")
                     proj_processor = ProjectionProcessor(
-                        self.db_manager, self.current_date, self.schema)
+                        self.db_manager, self.current_date, self.schema,
+                        brand_filter=pernod_brands)
                     projection_data = proj_processor.generate_projections(
                         py_gerente_marca=data['marca'].get('proyecciones'),
                         py_gerente_ciudad=None
@@ -188,17 +246,26 @@ class BrandOwnerWSRGenerator:
                     # 11b. Calcular PY Sistema (Nowcast = blend HW + Run Rate)
                     self._calculate_nowcast(estructura_marca)
 
-                    # 11c. Generar narrativa IA de Drivers
+                    # 11c. Generar narrativa IA de Drivers (marca + canal)
                     try:
+                        from proyeccion_objetiva.pilar3_operativa.drivers_narrative import DriversNarrativeGenerator
+                        narr_gen = DriversNarrativeGenerator()
+
                         drivers_by_marca = drivers_data.get('by_marca', pd.DataFrame())
                         if not drivers_by_marca.empty:
-                            from proyeccion_objetiva.pilar3_operativa.drivers_narrative import DriversNarrativeGenerator
-                            narr_gen = DriversNarrativeGenerator()
                             drivers_narrative = narr_gen.generate_diagnostic(
                                 drivers_by_marca, self.current_date, level="marca",
                                 detail_df=drivers_data.get('by_marca_submarca', pd.DataFrame())
                             )
-                            logger.info("Narrativa IA de drivers generada")
+                            logger.info("Narrativa IA de drivers marca generada")
+
+                        drivers_by_canal = drivers_data.get('by_canal', pd.DataFrame())
+                        if not drivers_by_canal.empty:
+                            drivers_canal_narrative = narr_gen.generate_diagnostic(
+                                drivers_by_canal, self.current_date, level="canal",
+                                detail_df=drivers_data.get('by_canal_subcanal', pd.DataFrame())
+                            )
+                            logger.info("Narrativa IA de drivers canal generada")
                     except Exception as e:
                         logger.warning(f"Narrativa IA drivers no generada: {e}")
 
@@ -225,8 +292,14 @@ class BrandOwnerWSRGenerator:
                 canales_df,
                 estructura_canal=estructura_canal,
                 drivers_data=drivers_data,
-                drivers_narrative_html=""
+                drivers_narrative_html=drivers_canal_narrative
             )
+
+            # Performance por Ciudad (con drilldown por marca)
+            ciudad_tables_html = ""
+            if SECTIONS.get('performance_ciudad', False):
+                ciudad_tables_html = self.table_generator.generate_ciudad_tables(
+                    estructura_ciudad)
 
             stock_html = self.table_generator.generate_stock_table(marcas_df)
 
@@ -245,7 +318,8 @@ class BrandOwnerWSRGenerator:
                 marca_tables_html=marca_tables_html,
                 canal_tables_html=canal_tables_html,
                 stock_html=stock_html,
-                comentarios_py_html=comentarios_py_html
+                comentarios_py_html=comentarios_py_html,
+                ciudad_tables_html=ciudad_tables_html
             )
 
             # 14. Guardar
@@ -268,7 +342,8 @@ class BrandOwnerWSRGenerator:
         """Obtener todos los datos del DWH (mismos queries que WSR original)"""
         data = {
             'marca': {}, 'marca_subfamilia': {},
-            'canal': {}, 'canal_marca': {}
+            'canal': {}, 'canal_marca': {},
+            'ciudad': {}, 'ciudad_marca': {}
         }
 
         # === MARCA ===
@@ -301,6 +376,18 @@ class BrandOwnerWSRGenerator:
             self.current_year, self.current_month)
         data['marca_subfamilia']['stock_subfamilia'] = self.db_manager.get_stock_marca_subfamilia()
         data['marca_subfamilia']['venta_promedio_diaria_subfamilia'] = self.db_manager.get_venta_promedio_diaria_marca_subfamilia(
+            self.current_year, self.current_month, self.current_day)
+
+        # === CIUDAD × MARCA (para filtrado Pernod + drilldown) ===
+        # Keys con sufijo _ciudad_marca para compatibilidad con DataProcessor
+        logger.info("  Ciudad x Marca...")
+        data['ciudad_marca']['ventas_historicas_ciudad_marca'] = self.db_manager.get_ventas_historicas_ciudad_marca(
+            self.previous_year, self.current_month)
+        data['ciudad_marca']['avance_actual_ciudad_marca'] = self.db_manager.get_avance_actual_ciudad_marca(
+            self.current_year, self.current_month, self.current_day)
+        data['ciudad_marca']['sop_ciudad_marca'] = self.db_manager.get_sop_ciudad_marca(
+            self.current_year, self.current_month)
+        data['ciudad_marca']['proyecciones_ciudad_marca'] = self.db_manager.get_proyecciones_ciudad_marca_hibrido(
             self.current_year, self.current_month, self.current_day)
 
         # === CANAL (totales — se re-agregan despues del filtrado) ===

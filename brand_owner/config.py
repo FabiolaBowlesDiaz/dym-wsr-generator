@@ -79,8 +79,9 @@ SECTIONS = {
     'performance_canal':     True,   # C9L con apertura por marca
     'stock_cobertura':       True,
 
+    'performance_ciudad':    True,   # Activado (Miguel lo confirmo)
+
     # Secciones EXCLUIDAS (KPIs de gestion / internos):
-    'performance_ciudad':    False,  # No mencionada por Miguel — pendiente confirmar
     'senales_cierre':        False,  # Proyeccion Nowcast — pendiente confirmar
     'hitrate_eficiencia':    False,  # Explicitamente excluido
 }

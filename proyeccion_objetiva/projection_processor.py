@@ -29,17 +29,25 @@ class ProjectionProcessor:
       4. Prepara datos para Resumen Ejecutivo (gráfica + tabla)
     """
 
-    def __init__(self, db_manager, current_date: datetime, schema: str = 'auto'):
+    def __init__(self, db_manager, current_date: datetime, schema: str = 'auto',
+                 brand_filter: Optional[list] = None):
+        """
+        Args:
+            brand_filter: Si se proporciona, restringe drivers a esa lista de marcas
+                          (usado por Brand Owner WSR para filtrar Pernod).
+        """
         self.db_manager = db_manager
         self.current_date = current_date
         self.schema = schema
+        self.brand_filter = brand_filter
 
         self.data_fetcher = ProjectionDataFetcher(db_manager, schema)
         self.stat_engine = StatisticalEngine(
             target_year=current_date.year,
             target_month=current_date.month
         )
-        self.drivers_engine = DriversEngine(db_manager, schema, current_date)
+        self.drivers_engine = DriversEngine(db_manager, schema, current_date,
+                                             brand_filter=brand_filter)
 
     def generate_projections(
         self,
