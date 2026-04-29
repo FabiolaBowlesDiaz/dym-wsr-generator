@@ -1262,6 +1262,33 @@ class DatabaseManager:
 
     # === QUERY BRAND OWNER (Pernod) ===
 
+    def get_proyecciones_semanales_marca(self, year: int, month: int) -> pd.DataFrame:
+        """
+        Obtener proyecciones semanales por marca.
+        Usado por el Brand Owner para rellenar semanas no cerradas con PY Gerente.
+        Agrupa por nombre_marca y convierte USD -> BOB.
+        """
+        query = f"""
+        SELECT
+            UPPER(nombre_marca) as marcadir,
+            SUM(CASE WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana1 AS NUMERIC), 0) * {self.tipo_cambio}
+                ELSE COALESCE(CAST(total_semana1 AS NUMERIC), 0) END) as py_semana1_bob,
+            SUM(CASE WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana2 AS NUMERIC), 0) * {self.tipo_cambio}
+                ELSE COALESCE(CAST(total_semana2 AS NUMERIC), 0) END) as py_semana2_bob,
+            SUM(CASE WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana3 AS NUMERIC), 0) * {self.tipo_cambio}
+                ELSE COALESCE(CAST(total_semana3 AS NUMERIC), 0) END) as py_semana3_bob,
+            SUM(CASE WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana4 AS NUMERIC), 0) * {self.tipo_cambio}
+                ELSE COALESCE(CAST(total_semana4 AS NUMERIC), 0) END) as py_semana4_bob,
+            SUM(CASE WHEN moneda = 'USD' THEN COALESCE(CAST(total_semana5 AS NUMERIC), 0) * {self.tipo_cambio}
+                ELSE COALESCE(CAST(total_semana5 AS NUMERIC), 0) END) as py_semana5_bob
+        FROM {self.schema}.fact_proyecciones
+        WHERE anio_proyeccion = {year}
+            AND mes_proyeccion = {month}
+            AND UPPER(ciudad) != 'TURISMO'
+        GROUP BY UPPER(nombre_marca)
+        """
+        return self.execute_query(query)
+
     def get_pernod_brands(self) -> list:
         """
         Obtener lista de marcas Pernod desde DimArticulo.

@@ -267,21 +267,32 @@ class DriversEngine:
         Same-to-Date: mes actual (al dia N) vs mismos N dias del año anterior.
         Si el mes actual no tiene datos, cae a fallback (ultimo mes completo YoY).
 
+        NOTA: Cuando brand_filter esta activo (Brand Owner), la comparacion LY
+        usa el MES COMPLETO del año anterior para alinearse con el calculo
+        de cobertura que usa el equipo comercial.
+
         Returns:
             DataFrame con: group_cols + cobertura, hit_rate, drop_size,
                            cobertura_trend, hitrate_trend, dropsize_trend,
                            venta_total, sufficient_data, ref_mes, ref_anio,
                            ref_dia (None en fallback), is_std (bool)
         """
+        import calendar as _cal
         cd = self.current_date
 
         # Periodo actual: dia 1 al dia actual del mes
         current_start = f"{cd.year}-{cd.month:02d}-01"
         current_end = f"{cd.year}-{cd.month:02d}-{cd.day:02d}"
 
-        # Mismo periodo año anterior
+        # Mismo periodo año anterior (mes completo si brand_filter, si no STD)
         yoy_start = f"{cd.year - 1}-{cd.month:02d}-01"
-        yoy_end = f"{cd.year - 1}-{cd.month:02d}-{cd.day:02d}"
+        if self.brand_filter:
+            # Brand Owner: mes completo de LY
+            last_day_prev = _cal.monthrange(cd.year - 1, cd.month)[1]
+            yoy_end = f"{cd.year - 1}-{cd.month:02d}-{last_day_prev:02d}"
+        else:
+            # Default: same-to-date
+            yoy_end = f"{cd.year - 1}-{cd.month:02d}-{cd.day:02d}"
 
         logger.info(f"[Drivers STD] Periodo actual: {current_start} a {current_end}")
         logger.info(f"[Drivers STD] Periodo YoY:    {yoy_start} a {yoy_end}")
@@ -347,8 +358,11 @@ class DriversEngine:
                     efect_trend = (efectividad_pct / efect_yoy) - 1
 
             result_row = {**key_values}
+            # Exponer cobertura_yoy (cli del mismo periodo ano anterior) para display
+            cob_yoy_val = float(row.get('cobertura_yoy', 0)) if has_yoy else 0
             result_row.update({
                 'cobertura': round(cob),
+                'cobertura_yoy': round(cob_yoy_val),
                 'cobertura_real': round(cob_real),
                 'pedidos': round(pedidos),
                 'efectividad_pct': efectividad_pct,

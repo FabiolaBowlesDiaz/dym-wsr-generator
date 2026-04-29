@@ -112,15 +112,13 @@ class BrandOwnerWSRGenerator:
             logger.info("Obteniendo datos del DWH...")
             data = self._fetch_data()
 
-            # 4. Excluir marcas sin ventas en el ultimo ano
-            ventas_hist = data['marca'].get('ventas_historicas')
-            if ventas_hist is not None and not ventas_hist.empty:
-                pernod_brands = exclude_inactive_brands(
-                    pernod_brands, ventas_hist, self.previous_year)
-            logger.info(f"Marcas Pernod activas: {pernod_brands}")
+            # 4. (Antes aqui se excluian marcas sin ventas en el ano anterior,
+            #    pero ese filtro se quito por pedido del usuario — mostrar todas
+            #    las marcas Pernod del DimArticulo aunque no hayan vendido en 2025)
+            logger.info(f"Usando todas las marcas Pernod de DimArticulo: {pernod_brands}")
 
             if not pernod_brands:
-                logger.error("Ninguna marca Pernod tiene ventas — abortando")
+                logger.error("No hay marcas Pernod en DimArticulo — abortando")
                 return False
 
             # 5. Filtrar datos a marcas Pernod
@@ -157,6 +155,22 @@ class BrandOwnerWSRGenerator:
                 data['marca'], data['marca_subfamilia']
             )
             marcas_df = estructura_marca['marca_totales']
+
+            # Merge proyecciones semanales en marcas_df (case-insensitive)
+            proy_sem = data['marca'].get('proyecciones_semanales')
+            if proy_sem is not None and not proy_sem.empty:
+                py_cols = [c for c in proy_sem.columns if c.startswith('py_semana')]
+                if py_cols:
+                    merged = marcas_df.copy()
+                    merged['_tmp_marca_up'] = merged['marcadir'].str.upper()
+                    src = proy_sem.copy()
+                    src['_tmp_marca_up'] = src['marcadir'].str.upper()
+                    src = src[['_tmp_marca_up'] + py_cols].drop_duplicates('_tmp_marca_up')
+                    merged = merged.merge(src, on='_tmp_marca_up', how='left').drop(columns=['_tmp_marca_up'])
+                    for c in py_cols:
+                        merged[c] = merged[c].fillna(0)
+                    marcas_df = merged
+                    estructura_marca['marca_totales'] = marcas_df
 
             # 7b. Calcular proyeccion por canal para Pernod
             #     Replica formula ponderada del WSR principal (R, S, T redistribuidos sin Q)
@@ -245,6 +259,10 @@ class BrandOwnerWSRGenerator:
 
                     # 11b. Calcular PY Sistema (Nowcast = blend HW + Run Rate)
                     self._calculate_nowcast(estructura_marca)
+
+                    # 11a2. Tambien merge HW + Nowcast para ciudad
+                    self._merge_hw_into_ciudad(estructura_ciudad, projection_data)
+                    self._calculate_nowcast_ciudad(estructura_ciudad)
 
                     # 11c. Generar narrativa IA de Drivers (marca + canal)
                     try:
@@ -363,6 +381,9 @@ class BrandOwnerWSRGenerator:
             self.current_year, self.current_month, self.current_day)
         data['marca']['venta_promedio_diaria'] = self.db_manager.get_venta_promedio_diaria_marca(
             self.current_year, self.current_month, self.current_day)
+        # Proyecciones semanales por marca (para rellenar semanas no cerradas)
+        data['marca']['proyecciones_semanales'] = self.db_manager.get_proyecciones_semanales_marca(
+            self.current_year, self.current_month)
 
         # === MARCA-SUBFAMILIA ===
         logger.info("  Marca-Subfamilia...")
@@ -539,6 +560,60 @@ class BrandOwnerWSRGenerator:
             logger.info(f"PY Sistema (Nowcast) calculado — credibilidad: {meta['w']:.1%}")
         except Exception as e:
             logger.warning(f"Nowcast no disponible (Auto PY estara vacio): {e}")
+
+    def _merge_hw_into_ciudad(self, estructura_ciudad, projection_data):
+        """Merge HW por ciudad (BOB + C9L) en ciudad_totales"""
+        import pandas as pd
+
+        def _merge_py_est(target_df, source_df, key_cols, value_col='py_estadistica_bob'):
+            if source_df is None or source_df.empty or value_col not in source_df.columns:
+                return target_df
+            tmp_cols = [f'_tmp_{c}' for c in key_cols]
+            src = source_df[key_cols + [value_col]].copy()
+            for c, tc in zip(key_cols, tmp_cols):
+                src[tc] = src[c].astype(str).str.upper()
+            src = src[tmp_cols + [value_col]]
+            src = src.groupby(tmp_cols, as_index=False)[value_col].sum()
+            tgt = target_df.copy()
+            for c, tc in zip(key_cols, tmp_cols):
+                tgt[tc] = tgt[c].astype(str).str.upper()
+            tgt = tgt.merge(src, on=tmp_cols, how='left')
+            tgt[value_col] = tgt[value_col].fillna(0)
+            tgt.drop(columns=tmp_cols, inplace=True)
+            return tgt
+
+        est_ciudad = projection_data.get('est_by_ciudad', pd.DataFrame())
+        estructura_ciudad['ciudad_totales'] = _merge_py_est(
+            estructura_ciudad['ciudad_totales'], est_ciudad, ['ciudad'])
+
+        est_ciudad_c9l = projection_data.get('est_by_ciudad_c9l', pd.DataFrame())
+        estructura_ciudad['ciudad_totales'] = _merge_py_est(
+            estructura_ciudad['ciudad_totales'], est_ciudad_c9l, ['ciudad'],
+            value_col='py_estadistica_c9l')
+
+        logger.info("PY Estadistica (HW) embebida en ciudad_totales")
+
+    def _calculate_nowcast_ciudad(self, estructura_ciudad):
+        """Calcular PY Sistema (Nowcast) para ciudad_totales"""
+        try:
+            from proyeccion_objetiva.nowcast_engine import NowcastEngine
+
+            calculator = BusinessDaysCalculator()
+            dias_mes, dias_avance, _ = calculator.calculate_business_days(self.current_date)
+            nowcast = NowcastEngine(self.current_date, dias_mes, dias_avance)
+
+            avance_bob_col = f'avance_{self.current_year}_bob'
+            avance_c9l_col = f'avance_{self.current_year}_c9l'
+
+            estructura_ciudad['ciudad_totales'] = nowcast.calculate(
+                estructura_ciudad['ciudad_totales'], avance_bob_col)
+            estructura_ciudad['ciudad_totales'] = nowcast.calculate(
+                estructura_ciudad['ciudad_totales'], avance_c9l_col,
+                hw_col='py_estadistica_c9l', value_suffix='c9l')
+
+            logger.info("PY Sistema (Nowcast) calculado para ciudad_totales")
+        except Exception as e:
+            logger.warning(f"Nowcast ciudad no disponible: {e}")
 
     def _save_report(self, html: str) -> str:
         """Guardar reporte HTML"""

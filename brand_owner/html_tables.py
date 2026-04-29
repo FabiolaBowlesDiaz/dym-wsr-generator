@@ -2,7 +2,7 @@
 Tablas HTML para el WSR Brand Owner (Pernod Ricard).
 
 Solo unidades C9L. Columnas renombradas a nomenclatura Brand Owner:
-LY, Mensual, MTD, PY GRCs, Auto PY, Spread, GRCs/Mensual, MTD/Mensual, GRCs VS LY, Stock, Cobertura.
+LY, Mensual, MTD, PY GRCs, Auto PY, Spread, GRCs/S&OP, MTD/Mensual, GRCs VS LY, Stock, Cobertura.
 
 Sin BOB, sin Ppto General, sin IngNeto/Precio, sin KPIs de gestion.
 """
@@ -104,7 +104,7 @@ class BrandOwnerTableGenerator:
         """Tabla C9L con drilldown por subfamilia, columnas Brand Owner"""
 
         html = f"""
-        <h3>PERFORMANCE POR MARCA (Con desglose por Subfamilia)</h3>
+        <h3>PERFORMANCE POR MARCA - C9L (Con desglose por Subfamilia)</h3>
         <div class="table-container">
         <table id="tabla-bo-marca">
             <thead>
@@ -116,7 +116,7 @@ class BrandOwnerTableGenerator:
                     <th>MTD</th>
                     <th>PY GRCs</th>
                     <th>Auto PY</th>
-                    <th>GRCs/Mensual</th>
+                    <th>GRCs/S&OP</th>
                     <th>MTD/Mensual</th>
                     <th>GRCs VS LY</th>
                 </tr>
@@ -184,8 +184,8 @@ class BrandOwnerTableGenerator:
                     s_sop = sub.get('sop_c9l', 0)
                     s_avance = sub.get(avance_col, 0)
                     s_av_sop = ((s_avance / s_sop) - 1) if s_sop > 0 else 0
-                    s_stock = sub.get('stock_c9l', 0)
-                    s_cob = sub.get('cobertura_dias', 0)
+                    # Auto PY (py_sistema_c9l) por subfamilia — del Nowcast
+                    s_py_sist = sub.get('py_sistema_c9l', 0)
 
                     html += f"""
                     <tr class="subfamilia-row subfamilia-bo-{marca_id}" style="display: none;">
@@ -195,7 +195,7 @@ class BrandOwnerTableGenerator:
                         <td class="text-right">{self._fmt(s_sop)}</td>
                         <td class="text-right">{self._fmt(s_avance)}</td>
                         <td class="text-right">-</td>
-                        <td class="text-right" style="color: #1d4ed8; background: #EFF6FF;">-</td>
+                        <td class="text-right" style="color: #1d4ed8; background: #EFF6FF;">{self._fmt(s_py_sist) if s_py_sist > 0 else '-'}</td>
                         <td class="text-right">-</td>
                         <td class="text-right {self._kpi_class(s_av_sop)}">{self._fmt(s_av_sop, pct=True)}</td>
                         <td class="text-right">-</td>
@@ -258,13 +258,13 @@ class BrandOwnerTableGenerator:
         avance_col = f'avance_{self.current_year}_c9l'
 
         html = f"""
-        <h3>PERFORMANCE POR MARCA</h3>
+        <h3>PERFORMANCE POR MARCA - C9L</h3>
         <div class="table-container">
         <table>
             <thead><tr>
                 <th>Marca</th><th>LY</th><th>Mensual</th><th>MTD</th>
                 <th>PY GRCs</th><th>Auto PY</th>
-                <th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
+                <th>GRCs/S&OP</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
             </tr></thead>
             <tbody>
         """
@@ -305,10 +305,33 @@ class BrandOwnerTableGenerator:
     # ------------------------------------------------------------------
 
     def _generate_marca_semanal(self, df: pd.DataFrame) -> str:
-        """Tabla semanal de ventas por marca (solo C9L)"""
+        """
+        Tabla semanal de ventas por marca (solo C9L).
+        Semanas cerradas → venta real.
+        Semana en curso + futuras → PY Gerente (en color naranja/italic).
+        Para detectar semana en curso: current_week es la semana actual; semanas
+        anteriores (< current_week) estan cerradas.
+        """
+        import pandas as pd
 
-        html = """
-        <h3>DETALLE SEMANAL DE VENTAS - POR MARCA</h3>
+        # Convertir py_semana{i}_bob a py_semana{i}_c9l usando ratio del mes
+        py_cols_c9l = {}
+        for i in range(1, 6):
+            py_bob_col = f'py_semana{i}_bob'
+            if py_bob_col in df.columns:
+                avance_bob_total = df[f'avance_{self.current_year}_bob'].sum() if f'avance_{self.current_year}_bob' in df.columns else 0
+                avance_c9l_total = df[f'avance_{self.current_year}_c9l'].sum() if f'avance_{self.current_year}_c9l' in df.columns else 0
+                ratio = (avance_c9l_total / avance_bob_total) if avance_bob_total > 0 else 0
+                py_cols_c9l[i] = df[py_bob_col] * ratio
+
+        PROJ_STYLE = 'color: #c2410c; font-style: italic; background: #fff7ed;'
+
+        html = f"""
+        <h3>DETALLE SEMANAL DE VENTAS - POR MARCA (C9L)</h3>
+        <p style="font-size: 10.5px; color: #6b7280; margin: -10px 0 10px 0;">
+            Semanas cerradas = venta real &nbsp;|&nbsp;
+            <span style="{PROJ_STYLE} padding: 2px 6px;">Semanas en curso o futuras = proyeccion gerentes</span>
+        </p>
         <div class="table-container">
         <table><thead><tr>
             <th>Marca</th><th>Semana 1</th><th>Semana 2</th>
@@ -316,33 +339,60 @@ class BrandOwnerTableGenerator:
         </tr></thead><tbody>
         """
 
-        for _, row in df.iterrows():
-            s = [row.get(f'semana{i}_c9l', 0) if self.current_week >= i else 0 for i in range(1, 6)]
-            total = sum(s)
+        for idx, row in df.iterrows():
+            cells = []
+            total = 0
+            for i in range(1, 6):
+                # Semana cerrada: antes de la actual
+                if i < self.current_week:
+                    val = row.get(f'semana{i}_c9l', 0)
+                    cells.append(f'<td>{self._fmt(val)}</td>')
+                    total += val
+                else:
+                    # Semana en curso o futura: usar proyeccion de gerente
+                    py_val = py_cols_c9l.get(i, pd.Series([0] * len(df))).iloc[idx] if i in py_cols_c9l and idx < len(py_cols_c9l[i]) else 0
+                    if py_val > 0:
+                        cells.append(f'<td style="{PROJ_STYLE}">{self._fmt(py_val)}</td>')
+                        total += py_val
+                    else:
+                        cells.append('<td>-</td>')
             html += f"""
                 <tr>
                     <td>{row['marcadir']}</td>
-                    <td>{self._fmt(s[0])}</td>
-                    <td>{self._fmt(s[1]) if self.current_week >= 2 else ''}</td>
-                    <td>{self._fmt(s[2]) if self.current_week >= 3 else ''}</td>
-                    <td>{self._fmt(s[3]) if self.current_week >= 4 else ''}</td>
-                    <td>{self._fmt(s[4]) if self.current_week >= 5 else ''}</td>
+                    {''.join(cells)}
                     <td>{self._fmt(total)}</td>
                 </tr>
             """
 
-        # Totals
-        totals = [df[f'semana{i}_c9l'].sum() if f'semana{i}_c9l' in df.columns and self.current_week >= i else 0
-                  for i in range(1, 6)]
+        # Totales por columna
+        totales = []
+        for i in range(1, 6):
+            if i < self.current_week:
+                col = f'semana{i}_c9l'
+                t = df[col].sum() if col in df.columns else 0
+                totales.append((t, False))  # False = real
+            else:
+                if i in py_cols_c9l:
+                    t = py_cols_c9l[i].sum()
+                    totales.append((t, True))  # True = proyeccion
+                else:
+                    totales.append((0, True))
+
+        total_mes = sum(t for t, _ in totales)
+        total_cells_html = ""
+        for t, is_proj in totales:
+            if is_proj and t > 0:
+                total_cells_html += f'<td style="{PROJ_STYLE}"><strong>{self._fmt(t)}</strong></td>'
+            elif t > 0:
+                total_cells_html += f'<td><strong>{self._fmt(t)}</strong></td>'
+            else:
+                total_cells_html += '<td>-</td>'
+
         html += f"""
                 <tr class="total-row">
                     <td><strong>TOTAL</strong></td>
-                    <td><strong>{self._fmt(totals[0])}</strong></td>
-                    <td><strong>{self._fmt(totals[1]) if self.current_week >= 2 else ''}</strong></td>
-                    <td><strong>{self._fmt(totals[2]) if self.current_week >= 3 else ''}</strong></td>
-                    <td><strong>{self._fmt(totals[3]) if self.current_week >= 4 else ''}</strong></td>
-                    <td><strong>{self._fmt(totals[4]) if self.current_week >= 5 else ''}</strong></td>
-                    <td><strong>{self._fmt(sum(totals))}</strong></td>
+                    {total_cells_html}
+                    <td><strong>{self._fmt(total_mes)}</strong></td>
                 </tr>
             </tbody></table></div>
         """
@@ -373,8 +423,7 @@ class BrandOwnerTableGenerator:
             html += self._generate_drivers_cobertura(
                 drivers_data, drivers_narrative_html, level='canal')
 
-        # Tabla semanal canal
-        html += self._generate_canal_semanal(df)
+        # Tabla semanal canal REMOVIDA por pedido del usuario
 
         return html
 
@@ -385,11 +434,11 @@ class BrandOwnerTableGenerator:
         avance_col = f'avance_{self.current_year}_c9l'
 
         html = f"""
-        <h3>PERFORMANCE POR CANAL</h3>
+        <h3>PERFORMANCE POR CANAL - C9L</h3>
         <div class="table-container">
         <table><thead><tr>
             <th>Canal</th><th>LY</th><th>Mensual</th><th>MTD</th>
-            <th>PY GRCs</th><th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
+            <th>PY GRCs</th><th>GRCs/S&OP</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
         </tr></thead><tbody>
         """
 
@@ -430,13 +479,13 @@ class BrandOwnerTableGenerator:
         avance_col = f'avance_{self.current_year}_c9l'
 
         html = f"""
-        <h3>PERFORMANCE POR CANAL (Con desglose por Marca)</h3>
+        <h3>PERFORMANCE POR CANAL - C9L (Con desglose por Marca)</h3>
         <div class="table-container">
         <table id="tabla-bo-canal">
             <thead><tr>
                 <th style="width: 30px;"></th>
                 <th>Canal / Marca</th><th>LY</th><th>Mensual</th><th>MTD</th>
-                <th>PY GRCs</th><th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
+                <th>PY GRCs</th><th>GRCs/S&OP</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
             </tr></thead>
             <tbody>
         """
@@ -595,25 +644,26 @@ class BrandOwnerTableGenerator:
                 {title}
             </h3>
             <p style="margin: 0 0 6px 0; color: #64748b; font-size: 11px;">
-                Periodo: <strong>Actual (al dia {self.current_day})</strong> &nbsp;|&nbsp;
-                vs <strong>Mismo periodo ano anterior</strong>
+                Periodo Actual: <strong>Dia 1 al {self.current_day} del mes</strong> &nbsp;|&nbsp;
+                Periodo LY: <strong>Mes completo {self.previous_year}</strong>
             </p>
             <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 10px;">
-                <strong>Cobertura (cli)</strong> = clientes padre unicos (Distinctcount Cod. Cliente Padre)
-                &nbsp;|&nbsp; <em>Same-to-Date</em>
+                <strong>Cobertura (cli)</strong> = COUNT(DISTINCT cod_cliente) en fact_ventas_detallado
             </p>
             <div>
             <table style="font-size: 11px; width: 100%; border-collapse: collapse; table-layout: fixed;">
                 <colgroup>
                     <col style="width: 110px;">
-                    <col style="width: 75px;">
-                    <col style="width: 75px;">
+                    <col style="width: 65px;">
+                    <col style="width: 65px;">
+                    <col style="width: 70px;">
                     <col>
                 </colgroup>
                 <thead>
                     <tr>
                         <th style="text-align: left; padding: 8px;">{entity_col.title()}</th>
-                        <th style="padding: 8px;">Cobertura<br>(cli padre)</th>
+                        <th style="padding: 8px;">Cobertura<br>Actual</th>
+                        <th style="padding: 8px;">Cobertura<br>LY</th>
                         <th style="padding: 8px;">&Delta; VS LY</th>
                         <th style="text-align: left; padding: 8px;">Comentario</th>
                     </tr>
@@ -625,6 +675,7 @@ class BrandOwnerTableGenerator:
             entity = row.get(entity_col, '')
             # Usar cobertura (cod_cliente = clientes reales), no cobertura_real (items padre)
             cob = row.get('cobertura', row.get('cobertura_real', 0))
+            cob_ly = row.get('cobertura_yoy', 0)
             cob_trend = row.get('cobertura_trend', row.get('cobertura_real_trend', None))
 
             # Format trend
@@ -651,10 +702,13 @@ class BrandOwnerTableGenerator:
                     else:
                         comment = 'Cobertura estable'
 
+            cob_ly_display = f'{int(cob_ly):,}' if cob_ly and cob_ly > 0 else '-'
+
             html += f"""
                     <tr style="border-bottom: 1px solid #e5e7eb;">
                         <td style="padding: 10px 8px; font-weight: 600; vertical-align: top;">{entity}</td>
                         <td style="padding: 10px 8px; text-align: right; vertical-align: top;">{int(cob):,}</td>
+                        <td style="padding: 10px 8px; text-align: right; vertical-align: top; color: #6b7280;">{cob_ly_display}</td>
                         <td style="padding: 10px 8px; text-align: center; vertical-align: top;">{arrow}</td>
                         <td style="padding: 10px 12px; font-size: 11px; line-height: 1.55; color: #374151; white-space: normal; word-wrap: break-word; overflow-wrap: break-word; text-align: left;">{comment}</td>
                     </tr>
@@ -714,13 +768,14 @@ class BrandOwnerTableGenerator:
             df_ciudad = df_ciudad.sort_values(avance_col_bob, ascending=False)
 
         html = f"""
-        <h3>PERFORMANCE POR CIUDAD (Con desglose por Marca)</h3>
+        <h3>PERFORMANCE POR CIUDAD - C9L (Con desglose por Marca)</h3>
         <div class="table-container">
         <table id="tabla-bo-ciudad">
             <thead><tr>
                 <th style="width: 30px;"></th>
                 <th>Ciudad / Marca</th><th>LY</th><th>Mensual</th><th>MTD</th>
-                <th>PY GRCs</th><th>GRCs/Mensual</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
+                <th>PY GRCs</th><th>Auto PY</th>
+                <th>GRCs/S&OP</th><th>MTD/Mensual</th><th>GRCs VS LY</th>
             </tr></thead>
             <tbody>
         """
@@ -740,6 +795,9 @@ class BrandOwnerTableGenerator:
             av_sop = ((avance / sop) - 1) if sop > 0 else 0
             py_v = ((py / vendido) - 1) if vendido > 0 else 0
 
+            # Auto PY (PY Sistema) para ciudad
+            py_sist = ciudad_row.get('py_sistema_c9l', 0)
+
             # Marca rows within ciudad
             marcas = df_ciudad_marca[df_ciudad_marca['ciudad'] == ciudad] if df_ciudad_marca is not None and not df_ciudad_marca.empty else pd.DataFrame()
             tiene_marcas = not marcas.empty
@@ -754,6 +812,7 @@ class BrandOwnerTableGenerator:
                     <td class="text-right">{self._fmt(sop)}</td>
                     <td class="text-right">{self._fmt(avance)}</td>
                     <td class="text-right">{self._fmt(py)}</td>
+                    <td class="text-right" style="color: #1d4ed8; font-weight: 600; background: #EFF6FF;">{self._fmt(py_sist) if py_sist > 0 else '-'}</td>
                     <td class="text-right {self._kpi_class(py_sop)}">{self._fmt(py_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(av_sop)}">{self._fmt(av_sop, pct=True)}</td>
                     <td class="text-right {self._kpi_class(py_v)}">{self._fmt(py_v, pct=True)}</td>
@@ -765,7 +824,14 @@ class BrandOwnerTableGenerator:
                     m_vendido = m_row.get(vendido_col, 0)
                     m_sop = m_row.get('sop_c9l', 0)
                     m_avance = m_row.get(avance_col, 0)
+                    m_avance_bob = m_row.get(avance_col_bob, 0)
+                    m_py_bob = m_row.get(f'py_{self.current_year}_bob', 0)
+                    # PY C9L on-the-fly: (avance_c9l × py_bob) / avance_bob
+                    m_py = (m_avance * m_py_bob / m_avance_bob) if m_avance_bob > 0 else 0
+
                     m_av_sop = ((m_avance / m_sop) - 1) if m_sop > 0 else 0
+                    m_py_sop = ((m_py / m_sop) - 1) if m_sop > 0 else 0
+                    m_py_v = ((m_py / m_vendido) - 1) if m_vendido > 0 else 0
 
                     html += f"""
                     <tr class="subfamilia-row ciudad-bo-{ciudad_id}" style="display: none;">
@@ -774,10 +840,11 @@ class BrandOwnerTableGenerator:
                         <td class="text-right">{self._fmt(m_vendido)}</td>
                         <td class="text-right">{self._fmt(m_sop)}</td>
                         <td class="text-right">{self._fmt(m_avance)}</td>
-                        <td class="text-right">-</td>
-                        <td class="text-right">-</td>
+                        <td class="text-right">{self._fmt(m_py) if m_py > 0 else '-'}</td>
+                        <td class="text-right" style="color: #1d4ed8; background: #EFF6FF;">-</td>
+                        <td class="text-right {self._kpi_class(m_py_sop)}">{self._fmt(m_py_sop, pct=True) if m_py > 0 else '-'}</td>
                         <td class="text-right {self._kpi_class(m_av_sop)}">{self._fmt(m_av_sop, pct=True)}</td>
-                        <td class="text-right">-</td>
+                        <td class="text-right {self._kpi_class(m_py_v)}">{self._fmt(m_py_v, pct=True) if m_py > 0 else '-'}</td>
                     </tr>
                     """
 
